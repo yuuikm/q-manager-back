@@ -120,9 +120,15 @@ class AdminController extends Controller
 
             // Create preview file for PDFs after document creation
             if (strtolower($file->getClientOriginalExtension()) === 'pdf') {
-                $fullOriginalPath = storage_path('app/public/' . $filePath);
-                
-                if (file_exists($fullOriginalPath)) {
+                // Check if exec function is available
+                if (!function_exists('exec')) {
+                    \Log::warning('exec() function is disabled, skipping preview generation', [
+                        'document_id' => $document->id
+                    ]);
+                } else {
+                    $fullOriginalPath = storage_path('app/public/' . $filePath);
+                    
+                    if (file_exists($fullOriginalPath)) {
                     // Create temporary file with ASCII name to avoid Cyrillic character issues
                     $tempFileName = 'temp_doc_' . $document->id . '_' . time() . '.pdf';
                     $tempFilePath = storage_path('app/public/documents/' . $tempFileName);
@@ -142,7 +148,7 @@ class AdminController extends Controller
                         
                         $output = [];
                         $returnCode = 0;
-                        exec($command, $output, $returnCode);
+                        \exec($command, $output, $returnCode);
                         
                         // Clean up temp file
                         unlink($tempFilePath);
@@ -178,11 +184,12 @@ class AdminController extends Controller
                             'temp_file' => $tempFilePath
                         ]);
                     }
-                } else {
-                    \Log::error('Original file not found for preview creation', [
-                        'document_id' => $document->id,
-                        'file_path' => $fullOriginalPath
-                    ]);
+                    } else {
+                        \Log::error('Original file not found for preview creation', [
+                            'document_id' => $document->id,
+                            'file_path' => $fullOriginalPath
+                        ]);
+                    }
                 }
             }
 
