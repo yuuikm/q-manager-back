@@ -17,7 +17,7 @@ class DocumentCategory extends Model
     // Relationships
     public function documents()
     {
-        return $this->hasMany(Document::class);
+        return $this->hasMany(Document::class, 'category_id');
     }
 
     // Auto-generate slug from name

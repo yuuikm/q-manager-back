@@ -69,16 +69,26 @@ class CourseCategoryController extends Controller
      */
     public function destroy(string $id)
     {
-        $category = CourseCategory::findOrFail($id);
-        
-        // Check if category is being used by courses
-        if ($category->courses()->count() > 0) {
-            return response()->json([
-                'message' => 'Cannot delete category that is being used by courses.'
-            ], 422);
-        }
+        try {
+            $category = CourseCategory::findOrFail($id);
+            
+            // Check if category is being used by courses
+            if ($category->courses()->count() > 0) {
+                return response()->json([
+                    'message' => 'Cannot delete category that is being used by courses.'
+                ], 422);
+            }
 
-        $category->delete();
-        return response()->json(['message' => 'Category deleted successfully']);
+            $category->delete();
+            return response()->json(['message' => 'Category deleted successfully']);
+        } catch (\Exception $e) {
+            \Log::error('Error deleting course category: ' . $e->getMessage(), [
+                'category_id' => $id,
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'message' => 'Failed to delete category: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }

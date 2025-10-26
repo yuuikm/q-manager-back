@@ -69,16 +69,26 @@ class DocumentCategoryController extends Controller
      */
     public function destroy(string $id)
     {
-        $category = DocumentCategory::findOrFail($id);
-        
-        // Check if category is being used by documents
-        if ($category->documents()->count() > 0) {
-            return response()->json([
-                'message' => 'Cannot delete category that is being used by documents.'
-            ], 422);
-        }
+        try {
+            $category = DocumentCategory::findOrFail($id);
+            
+            // Check if category is being used by documents
+            if ($category->documents()->count() > 0) {
+                return response()->json([
+                    'message' => 'Cannot delete category that is being used by documents.'
+                ], 422);
+            }
 
-        $category->delete();
-        return response()->json(['message' => 'Category deleted successfully']);
+            $category->delete();
+            return response()->json(['message' => 'Category deleted successfully']);
+        } catch (\Exception $e) {
+            \Log::error('Error deleting document category: ' . $e->getMessage(), [
+                'category_id' => $id,
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'message' => 'Failed to delete category: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }

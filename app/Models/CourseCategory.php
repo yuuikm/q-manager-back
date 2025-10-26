@@ -17,7 +17,7 @@ class CourseCategory extends Model
     // Relationships
     public function courses()
     {
-        return $this->hasMany(Course::class);
+        return $this->hasMany(Course::class, 'category_id');
     }
 
     // Auto-generate slug from name

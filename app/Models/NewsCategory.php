@@ -17,7 +17,7 @@ class NewsCategory extends Model
     // Relationships
     public function news()
     {
-        return $this->hasMany(News::class);
+        return $this->hasMany(News::class, 'category_id');
     }
 
     // Auto-generate slug from name
