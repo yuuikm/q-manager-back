@@ -10,6 +10,7 @@ class Document extends Model
         'title',
         'description',
         'price',
+        'preview_pages',
         'file_path',
         'file_name',
         'file_type',
@@ -26,6 +27,7 @@ class Document extends Model
 
     protected $casts = [
         'price' => 'decimal:2',
+        'preview_pages' => 'integer',
         'is_active' => 'boolean',
         'file_size' => 'integer',
         'preview_file_size' => 'integer',

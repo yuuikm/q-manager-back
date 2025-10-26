@@ -54,6 +54,7 @@ class AdminController extends Controller
             'description' => 'required|string|max:500',
             'category' => 'required|string|max:100',
             'price' => 'required|numeric|min:0',
+            'preview_pages' => 'required|integer|min:1|max:10',
             'file' => 'required|file|mimes:pdf,doc,docx,txt,rtf,jpg,jpeg,png,gif|max:10240',
         ], [
             'file.required' => 'Файл обязателен для загрузки',
@@ -102,7 +103,7 @@ class AdminController extends Controller
                 ]);
             }
 
-            $document = Document::create([
+            $documentData = [
                 'title' => $request->title,
                 'description' => $request->description,
                 'price' => $request->price,
@@ -116,7 +117,14 @@ class AdminController extends Controller
                 'created_by' => $request->user()->id,
                 'buy_number' => 0,
                 'category_id' => $category->id,
-            ]);
+            ];
+            
+            // Only add preview_pages if column exists
+            if (\Schema::hasColumn('documents', 'preview_pages')) {
+                $documentData['preview_pages'] = $request->preview_pages ?? 3;
+            }
+            
+            $document = Document::create($documentData);
 
             // Create preview file for PDFs after document creation
             if (strtolower($file->getClientOriginalExtension()) === 'pdf') {
@@ -139,9 +147,18 @@ class AdminController extends Controller
                         $previewFilePath = 'documents/' . $previewFileName;
                         $fullPreviewPath = storage_path('app/public/' . $previewFilePath);
                         
-                        // Use Ghostscript to extract first 3 pages
+                        // Use Ghostscript to extract pages based on preview_pages parameter
+                        // If preview_pages column doesn't exist, use default of 3
+                        $previewPages = 3;
+                        if (\Schema::hasColumn('documents', 'preview_pages') && isset($document->preview_pages)) {
+                            $previewPages = $document->preview_pages;
+                        } else {
+                            $previewPages = $request->preview_pages ?? 3;
+                        }
+                        
                         $command = sprintf(
-                            'gs -dNOPAUSE -dBATCH -sDEVICE=pdfwrite -dFirstPage=1 -dLastPage=3 -sOutputFile=%s %s 2>/dev/null',
+                            'gs -dNOPAUSE -dBATCH -sDEVICE=pdfwrite -dFirstPage=1 -dLastPage=%d -sOutputFile=%s %s 2>/dev/null',
+                            $previewPages,
                             escapeshellarg($fullPreviewPath),
                             escapeshellarg($tempFilePath)
                         );
@@ -232,6 +249,7 @@ class AdminController extends Controller
             'description' => 'required|string|max:500',
             'category' => 'required|string|max:100',
             'price' => 'required|numeric|min:0',
+            'preview_pages' => 'nullable|integer|min:1|max:10',
             'is_active' => 'boolean',
         ]);
 
@@ -239,12 +257,19 @@ class AdminController extends Controller
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
-        $document->update([
+        $updateData = [
             'title' => $request->title,
             'description' => $request->description,
             'price' => $request->price,
             'is_active' => $request->is_active ?? $document->is_active,
-        ]);
+        ];
+        
+        // Only update preview_pages if provided
+        if ($request->has('preview_pages')) {
+            $updateData['preview_pages'] = $request->preview_pages;
+        }
+        
+        $document->update($updateData);
 
         // Handle category - find existing or create new
         $categoryName = $request->category;

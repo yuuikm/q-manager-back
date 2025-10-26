@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y \
     libjpeg62-turbo-dev \
     libpng-dev \
     libzip-dev \
+    ghostscript \
     && rm -rf /var/lib/apt/lists/*
 
 # Install PHP extensions (much faster than compiling)
