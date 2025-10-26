@@ -29,6 +29,10 @@ COPY . .
 # Install Composer dependencies
 RUN composer install --no-dev --optimize-autoloader --no-interaction
 
+# Create required storage directories
+RUN mkdir -p storage/app/public/documents storage/app/public/previews && \
+    chown -R www-data:www-data storage
+
 # Set proper permissions
 RUN chown -R www-data:www-data /var/www
 

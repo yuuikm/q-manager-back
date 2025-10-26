@@ -144,7 +144,7 @@ class AdminController extends Controller
                     // Copy original file to temp location
                     if (copy($fullOriginalPath, $tempFilePath)) {
                         $previewFileName = 'preview_doc_' . $document->id . '_' . time() . '.pdf';
-                        $previewFilePath = 'documents/' . $previewFileName;
+                        $previewFilePath = 'previews/' . $previewFileName;
                         $fullPreviewPath = storage_path('app/public/' . $previewFilePath);
                         
                         // Use Ghostscript to extract pages based on preview_pages parameter
@@ -250,6 +250,7 @@ class AdminController extends Controller
             'category' => 'required|string|max:100',
             'price' => 'required|numeric|min:0',
             'preview_pages' => 'nullable|integer|min:1|max:10',
+            'file' => 'nullable|file|mimes:pdf,doc,docx,txt,rtf,jpg,jpeg,png,gif|max:10240',
             'is_active' => 'boolean',
         ]);
 
@@ -264,9 +265,42 @@ class AdminController extends Controller
             'is_active' => $request->is_active ?? $document->is_active,
         ];
         
+        $previewPagesChanged = false;
+        $oldPreviewPages = $document->preview_pages;
+        
         // Only update preview_pages if provided
         if ($request->has('preview_pages')) {
             $updateData['preview_pages'] = $request->preview_pages;
+            $previewPagesChanged = ($oldPreviewPages != $request->preview_pages);
+        }
+        
+        // Handle file upload if provided
+        if ($request->hasFile('file')) {
+            $file = $request->file('file');
+            
+            // Delete old file
+            if ($document->file_path) {
+                Storage::disk('public')->delete($document->file_path);
+            }
+            
+            // Delete old preview file
+            if ($document->preview_file_path) {
+                Storage::disk('public')->delete($document->preview_file_path);
+            }
+            
+            // Store new file
+            $fileName = time() . '_' . $file->getClientOriginalName();
+            $filePath = $file->storeAs('documents', $fileName, 'public');
+            
+            $updateData['file_path'] = $filePath;
+            $updateData['file_name'] = $file->getClientOriginalName();
+            $updateData['file_type'] = $file->getClientMimeType();
+            $updateData['file_size'] = $file->getSize();
+            
+            // Reset preview fields (will be regenerated below)
+            $updateData['preview_file_path'] = null;
+            $updateData['preview_file_name'] = null;
+            $updateData['preview_file_size'] = null;
         }
         
         $document->update($updateData);
@@ -285,6 +319,84 @@ class AdminController extends Controller
 
         // Update category relationship
         $document->update(['category_id' => $category->id]);
+        
+        // Regenerate preview if preview_pages changed or file was uploaded
+        if ($previewPagesChanged || $request->hasFile('file')) {
+            // Reload document to get updated values
+            $document->refresh();
+            
+            // Only generate preview for PDFs
+            $filePathForPreview = $request->hasFile('file') ? $document->file_path : $document->file_path;
+            $fullOriginalPath = storage_path('app/public/' . $filePathForPreview);
+            
+            if (file_exists($fullOriginalPath) && strtolower(pathinfo($fullOriginalPath, PATHINFO_EXTENSION)) === 'pdf') {
+                // Check if exec function is available
+                if (!function_exists('exec')) {
+                    \Log::warning('exec() function is disabled, skipping preview generation', [
+                        'document_id' => $document->id
+                    ]);
+                } else {
+                    // Delete old preview file if exists
+                    if ($document->preview_file_path) {
+                        Storage::disk('public')->delete($document->preview_file_path);
+                    }
+                    
+                    // Create temporary file with ASCII name to avoid Cyrillic character issues
+                    $tempFileName = 'temp_doc_' . $document->id . '_' . time() . '.pdf';
+                    $tempFilePath = storage_path('app/public/documents/' . $tempFileName);
+                    
+                    // Copy original file to temp location
+                    if (copy($fullOriginalPath, $tempFilePath)) {
+                        $previewFileName = 'preview_doc_' . $document->id . '_' . time() . '.pdf';
+                        $previewFilePath = 'previews/' . $previewFileName;
+                        $fullPreviewPath = storage_path('app/public/' . $previewFilePath);
+                        
+                        // Use Ghostscript to extract pages based on preview_pages parameter
+                        $previewPages = $document->preview_pages ?? 3;
+                        
+                        $command = sprintf(
+                            'gs -dNOPAUSE -dBATCH -sDEVICE=pdfwrite -dFirstPage=1 -dLastPage=%d -sOutputFile=%s %s 2>/dev/null',
+                            $previewPages,
+                            escapeshellarg($fullPreviewPath),
+                            escapeshellarg($tempFilePath)
+                        );
+                        
+                        $output = [];
+                        $returnCode = 0;
+                        \exec($command, $output, $returnCode);
+                        
+                        // Clean up temp file
+                        unlink($tempFilePath);
+                        
+                        if ($returnCode === 0 && file_exists($fullPreviewPath)) {
+                            $previewFileSize = filesize($fullPreviewPath);
+                            
+                            // Update document with preview file information
+                            $document->update([
+                                'preview_file_path' => $previewFilePath,
+                                'preview_file_name' => $previewFileName,
+                                'preview_file_size' => $previewFileSize,
+                            ]);
+                            
+                            \Log::info('Preview file regenerated successfully', [
+                                'document_id' => $document->id,
+                                'original_file' => $fullOriginalPath,
+                                'preview_file' => $fullPreviewPath,
+                                'preview_size' => $previewFileSize,
+                                'preview_pages' => $previewPages
+                            ]);
+                        } else {
+                            \Log::error('Failed to regenerate preview file', [
+                                'document_id' => $document->id,
+                                'command' => $command,
+                                'return_code' => $returnCode,
+                                'output' => $output
+                            ]);
+                        }
+                    }
+                }
+            }
+        }
 
         return response()->json([
             'message' => 'Document updated successfully',
