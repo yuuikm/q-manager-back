@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Document;
 use App\Models\DocumentCategory;
-use App\Services\PdfPreviewService;
+use App\Services\PdfParserPreviewService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
@@ -129,31 +129,34 @@ class AdminController extends Controller
 
             // Create preview file for PDFs after document creation
             if (strtolower($file->getClientOriginalExtension()) === 'pdf') {
-                $pdfPreviewService = new PdfPreviewService();
-                
-                // Check if PDF preview service is available
-                if (!$pdfPreviewService->isAvailable()) {
-                    \Log::warning('PDF preview service not available, skipping preview generation', [
-                        'document_id' => $document->id
-                    ]);
+                // Get preview pages count
+                $previewPages = 3;
+                if (\Schema::hasColumn('documents', 'preview_pages') && isset($document->preview_pages)) {
+                    $previewPages = $document->preview_pages;
                 } else {
-                    // Get preview pages count
-                    $previewPages = 3;
-                    if (\Schema::hasColumn('documents', 'preview_pages') && isset($document->preview_pages)) {
-                        $previewPages = $document->preview_pages;
+                    $previewPages = $request->preview_pages ?? 3;
+                }
+                
+                // Generate preview using PDF Parser + mPDF (handles compressed PDFs)
+                $pdfParserService = new PdfParserPreviewService();
+                
+                if ($pdfParserService->isAvailable()) {
+                    $success = $pdfParserService->generateDocumentPreview($document, $previewPages);
+                    if ($success) {
+                        \Log::info('PDF preview generated successfully with PDF Parser + mPDF', [
+                            'document_id' => $document->id,
+                            'preview_pages' => $previewPages
+                        ]);
                     } else {
-                        $previewPages = $request->preview_pages ?? 3;
-                    }
-                    
-                    // Generate preview using the service
-                    $success = $pdfPreviewService->generateDocumentPreview($document, $previewPages);
-                    
-                    if (!$success) {
-                        \Log::error('Failed to generate PDF preview using service', [
+                        \Log::error('Failed to generate PDF preview with PDF Parser', [
                             'document_id' => $document->id,
                             'preview_pages' => $previewPages
                         ]);
                     }
+                } else {
+                    \Log::warning('PDF Parser service not available, skipping preview generation', [
+                        'document_id' => $document->id
+                    ]);
                 }
             }
 
@@ -277,31 +280,34 @@ class AdminController extends Controller
             $fullOriginalPath = storage_path('app/public/' . $filePathForPreview);
             
             if (file_exists($fullOriginalPath) && strtolower(pathinfo($fullOriginalPath, PATHINFO_EXTENSION)) === 'pdf') {
-                $pdfPreviewService = new PdfPreviewService();
+                // Delete old preview file if exists
+                if ($document->preview_file_path) {
+                    Storage::disk('public')->delete($document->preview_file_path);
+                }
                 
-                // Check if PDF preview service is available
-                if (!$pdfPreviewService->isAvailable()) {
-                    \Log::warning('PDF preview service not available, skipping preview generation', [
-                        'document_id' => $document->id
-                    ]);
-                } else {
-                    // Delete old preview file if exists
-                    if ($document->preview_file_path) {
-                        Storage::disk('public')->delete($document->preview_file_path);
-                    }
-                    
-                    // Get preview pages count
-                    $previewPages = $document->preview_pages ?? 3;
-                    
-                    // Generate preview using the service
-                    $success = $pdfPreviewService->generateDocumentPreview($document, $previewPages);
-                    
-                    if (!$success) {
-                        \Log::error('Failed to regenerate PDF preview using service', [
+                // Get preview pages count
+                $previewPages = $document->preview_pages ?? 3;
+                
+                // Regenerate preview using PDF Parser + mPDF (handles compressed PDFs)
+                $pdfParserService = new PdfParserPreviewService();
+                
+                if ($pdfParserService->isAvailable()) {
+                    $success = $pdfParserService->generateDocumentPreview($document, $previewPages);
+                    if ($success) {
+                        \Log::info('PDF preview regenerated successfully with PDF Parser + mPDF', [
+                            'document_id' => $document->id,
+                            'preview_pages' => $previewPages
+                        ]);
+                    } else {
+                        \Log::error('Failed to regenerate PDF preview with PDF Parser', [
                             'document_id' => $document->id,
                             'preview_pages' => $previewPages
                         ]);
                     }
+                } else {
+                    \Log::warning('PDF Parser service not available, skipping preview regeneration', [
+                        'document_id' => $document->id
+                    ]);
                 }
             }
         }
