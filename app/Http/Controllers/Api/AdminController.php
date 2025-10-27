@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Document;
 use App\Models\DocumentCategory;
+use App\Services\PdfPreviewService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
@@ -128,83 +129,29 @@ class AdminController extends Controller
 
             // Create preview file for PDFs after document creation
             if (strtolower($file->getClientOriginalExtension()) === 'pdf') {
-                // Check if exec function is available
-                if (!function_exists('exec')) {
-                    \Log::warning('exec() function is disabled, skipping preview generation', [
+                $pdfPreviewService = new PdfPreviewService();
+                
+                // Check if PDF preview service is available
+                if (!$pdfPreviewService->isAvailable()) {
+                    \Log::warning('PDF preview service not available, skipping preview generation', [
                         'document_id' => $document->id
                     ]);
                 } else {
-                    $fullOriginalPath = storage_path('app/public/' . $filePath);
-                    
-                    if (file_exists($fullOriginalPath)) {
-                    // Create temporary file with ASCII name to avoid Cyrillic character issues
-                    $tempFileName = 'temp_doc_' . $document->id . '_' . time() . '.pdf';
-                    $tempFilePath = storage_path('app/public/documents/' . $tempFileName);
-                    
-                    // Copy original file to temp location
-                    if (copy($fullOriginalPath, $tempFilePath)) {
-                        $previewFileName = 'preview_doc_' . $document->id . '_' . time() . '.pdf';
-                        $previewFilePath = 'previews/' . $previewFileName;
-                        $fullPreviewPath = storage_path('app/public/' . $previewFilePath);
-                        
-                        // Use Ghostscript to extract pages based on preview_pages parameter
-                        // If preview_pages column doesn't exist, use default of 3
-                        $previewPages = 3;
-                        if (\Schema::hasColumn('documents', 'preview_pages') && isset($document->preview_pages)) {
-                            $previewPages = $document->preview_pages;
-                        } else {
-                            $previewPages = $request->preview_pages ?? 3;
-                        }
-                        
-                        $command = sprintf(
-                            'gs -dNOPAUSE -dBATCH -sDEVICE=pdfwrite -dFirstPage=1 -dLastPage=%d -sOutputFile=%s %s 2>/dev/null',
-                            $previewPages,
-                            escapeshellarg($fullPreviewPath),
-                            escapeshellarg($tempFilePath)
-                        );
-                        
-                        $output = [];
-                        $returnCode = 0;
-                        \exec($command, $output, $returnCode);
-                        
-                        // Clean up temp file
-                        unlink($tempFilePath);
-                        
-                        if ($returnCode === 0 && file_exists($fullPreviewPath)) {
-                            $previewFileSize = filesize($fullPreviewPath);
-                            
-                            // Update document with preview file information
-                            $document->update([
-                                'preview_file_path' => $previewFilePath,
-                                'preview_file_name' => $previewFileName,
-                                'preview_file_size' => $previewFileSize,
-                            ]);
-                            
-                            \Log::info('Preview file created successfully', [
-                                'document_id' => $document->id,
-                                'original_file' => $fullOriginalPath,
-                                'preview_file' => $fullPreviewPath,
-                                'preview_size' => $previewFileSize
-                            ]);
-                        } else {
-                            \Log::error('Failed to create preview file', [
-                                'document_id' => $document->id,
-                                'command' => $command,
-                                'return_code' => $returnCode,
-                                'output' => $output
-                            ]);
-                        }
+                    // Get preview pages count
+                    $previewPages = 3;
+                    if (\Schema::hasColumn('documents', 'preview_pages') && isset($document->preview_pages)) {
+                        $previewPages = $document->preview_pages;
                     } else {
-                        \Log::error('Failed to copy original file to temp location', [
-                            'document_id' => $document->id,
-                            'original_file' => $fullOriginalPath,
-                            'temp_file' => $tempFilePath
-                        ]);
+                        $previewPages = $request->preview_pages ?? 3;
                     }
-                    } else {
-                        \Log::error('Original file not found for preview creation', [
+                    
+                    // Generate preview using the service
+                    $success = $pdfPreviewService->generateDocumentPreview($document, $previewPages);
+                    
+                    if (!$success) {
+                        \Log::error('Failed to generate PDF preview using service', [
                             'document_id' => $document->id,
-                            'file_path' => $fullOriginalPath
+                            'preview_pages' => $previewPages
                         ]);
                     }
                 }
@@ -330,9 +277,11 @@ class AdminController extends Controller
             $fullOriginalPath = storage_path('app/public/' . $filePathForPreview);
             
             if (file_exists($fullOriginalPath) && strtolower(pathinfo($fullOriginalPath, PATHINFO_EXTENSION)) === 'pdf') {
-                // Check if exec function is available
-                if (!function_exists('exec')) {
-                    \Log::warning('exec() function is disabled, skipping preview generation', [
+                $pdfPreviewService = new PdfPreviewService();
+                
+                // Check if PDF preview service is available
+                if (!$pdfPreviewService->isAvailable()) {
+                    \Log::warning('PDF preview service not available, skipping preview generation', [
                         'document_id' => $document->id
                     ]);
                 } else {
@@ -341,58 +290,17 @@ class AdminController extends Controller
                         Storage::disk('public')->delete($document->preview_file_path);
                     }
                     
-                    // Create temporary file with ASCII name to avoid Cyrillic character issues
-                    $tempFileName = 'temp_doc_' . $document->id . '_' . time() . '.pdf';
-                    $tempFilePath = storage_path('app/public/documents/' . $tempFileName);
+                    // Get preview pages count
+                    $previewPages = $document->preview_pages ?? 3;
                     
-                    // Copy original file to temp location
-                    if (copy($fullOriginalPath, $tempFilePath)) {
-                        $previewFileName = 'preview_doc_' . $document->id . '_' . time() . '.pdf';
-                        $previewFilePath = 'previews/' . $previewFileName;
-                        $fullPreviewPath = storage_path('app/public/' . $previewFilePath);
-                        
-                        // Use Ghostscript to extract pages based on preview_pages parameter
-                        $previewPages = $document->preview_pages ?? 3;
-                        
-                        $command = sprintf(
-                            'gs -dNOPAUSE -dBATCH -sDEVICE=pdfwrite -dFirstPage=1 -dLastPage=%d -sOutputFile=%s %s 2>/dev/null',
-                            $previewPages,
-                            escapeshellarg($fullPreviewPath),
-                            escapeshellarg($tempFilePath)
-                        );
-                        
-                        $output = [];
-                        $returnCode = 0;
-                        \exec($command, $output, $returnCode);
-                        
-                        // Clean up temp file
-                        unlink($tempFilePath);
-                        
-                        if ($returnCode === 0 && file_exists($fullPreviewPath)) {
-                            $previewFileSize = filesize($fullPreviewPath);
-                            
-                            // Update document with preview file information
-                            $document->update([
-                                'preview_file_path' => $previewFilePath,
-                                'preview_file_name' => $previewFileName,
-                                'preview_file_size' => $previewFileSize,
-                            ]);
-                            
-                            \Log::info('Preview file regenerated successfully', [
-                                'document_id' => $document->id,
-                                'original_file' => $fullOriginalPath,
-                                'preview_file' => $fullPreviewPath,
-                                'preview_size' => $previewFileSize,
-                                'preview_pages' => $previewPages
-                            ]);
-                        } else {
-                            \Log::error('Failed to regenerate preview file', [
-                                'document_id' => $document->id,
-                                'command' => $command,
-                                'return_code' => $returnCode,
-                                'output' => $output
-                            ]);
-                        }
+                    // Generate preview using the service
+                    $success = $pdfPreviewService->generateDocumentPreview($document, $previewPages);
+                    
+                    if (!$success) {
+                        \Log::error('Failed to regenerate PDF preview using service', [
+                            'document_id' => $document->id,
+                            'preview_pages' => $previewPages
+                        ]);
                     }
                 }
             }
