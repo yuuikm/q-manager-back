@@ -21,9 +21,20 @@ class CourseController extends Controller
     {
         $query = Course::with(['author', 'materials', 'tests', 'enrollments', 'category']);
 
-        // Filter by type
+        // Filter by type - handle both single type and array of types
         if ($request->has('type')) {
-            $query->where('type', $request->get('type'));
+            $typeFilter = $request->get('type');
+            if (is_array($typeFilter)) {
+                // Filter by any of the types in the array
+                $query->where(function($q) use ($typeFilter) {
+                    foreach ($typeFilter as $type) {
+                        $q->orWhereJsonContains('type', $type);
+                    }
+                });
+            } else {
+                // Single type filter
+                $query->whereJsonContains('type', $typeFilter);
+            }
         }
 
         // Filter by category
@@ -68,12 +79,11 @@ class CourseController extends Controller
             'description' => 'required|string',
             'content' => 'required|string',
             'price' => 'required|numeric|min:0',
-            'type' => 'required|in:online,self_learning,offline',
+            'type' => 'required|string', // Will be JSON string from frontend
             'category' => 'required|string|max:255',
             'featured_image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
             'certificate_template' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
-            'max_students' => 'nullable|integer|min:1',
-            'duration_hours' => 'nullable|integer|min:1',
+            // removed max_students and duration_hours
             'requirements' => 'nullable|string',
             'learning_outcomes' => 'nullable|string',
             'zoom_link' => 'nullable|url',
@@ -89,15 +99,33 @@ class CourseController extends Controller
         }
         $userId = $user->id;
 
+        // Handle type - can be JSON string or array
+        $typeData = $request->type;
+        if (is_string($typeData)) {
+            $typeData = json_decode($typeData, true);
+        }
+        if (!is_array($typeData)) {
+            $typeData = [$typeData];
+        }
+        // Validate types
+        $validTypes = ['online', 'self_learning', 'offline'];
+        $typeData = array_filter($typeData, function($type) use ($validTypes) {
+            return in_array($type, $validTypes);
+        });
+        if (empty($typeData)) {
+            return response()->json(['error' => 'At least one valid type is required'], 422);
+        }
+        // Limit to 3 types
+        $typeData = array_slice($typeData, 0, 3);
+
         $data = [
             'title' => $request->title,
             'slug' => Str::slug($request->title),
             'description' => $request->description,
             'content' => $request->content,
             'price' => $request->price,
-            'type' => $request->type,
-            'max_students' => $request->max_students,
-            'duration_hours' => $request->duration_hours,
+            'type' => $typeData, // Store as JSON array
+            // removed max_students and duration_hours
             'requirements' => $request->requirements,
             'learning_outcomes' => $request->learning_outcomes,
             'zoom_link' => $request->zoom_link,
@@ -166,12 +194,11 @@ class CourseController extends Controller
             'description' => 'required|string',
             'content' => 'required|string',
             'price' => 'required|numeric|min:0',
-            'type' => 'required|in:online,self_learning,offline',
+            'type' => 'required|string', // Will be JSON string from frontend
             'category' => 'required|string|max:255',
             'featured_image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
             'certificate_template' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
-            'max_students' => 'nullable|integer|min:1',
-            'duration_hours' => 'nullable|integer|min:1',
+            // removed max_students and duration_hours
             'requirements' => 'nullable|string',
             'learning_outcomes' => 'nullable|string',
             'zoom_link' => 'nullable|url',
@@ -180,15 +207,33 @@ class CourseController extends Controller
             'is_featured' => 'boolean',
         ]);
 
+        // Handle type - can be JSON string or array
+        $typeData = $request->type;
+        if (is_string($typeData)) {
+            $typeData = json_decode($typeData, true);
+        }
+        if (!is_array($typeData)) {
+            $typeData = [$typeData];
+        }
+        // Validate types
+        $validTypes = ['online', 'self_learning', 'offline'];
+        $typeData = array_filter($typeData, function($type) use ($validTypes) {
+            return in_array($type, $validTypes);
+        });
+        if (empty($typeData)) {
+            return response()->json(['error' => 'At least one valid type is required'], 422);
+        }
+        // Limit to 3 types
+        $typeData = array_slice($typeData, 0, 3);
+
         $data = [
             'title' => $request->title,
             'slug' => Str::slug($request->title),
             'description' => $request->description,
             'content' => $request->content,
             'price' => $request->price,
-            'type' => $request->type,
-            'max_students' => $request->max_students,
-            'duration_hours' => $request->duration_hours,
+            'type' => $typeData, // Store as JSON array
+            // removed max_students and duration_hours
             'requirements' => $request->requirements,
             'learning_outcomes' => $request->learning_outcomes,
             'zoom_link' => $request->zoom_link,

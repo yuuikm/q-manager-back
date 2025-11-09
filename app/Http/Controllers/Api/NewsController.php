@@ -67,7 +67,8 @@ class NewsController extends Controller
 
         $request->validate([
             'title' => 'required|string|max:255',
-            'description' => 'required|string',
+            'description' => 'nullable|string',
+            'video_link' => 'nullable|url|max:500',
             'content' => 'required|string',
             'category' => 'nullable|string|max:255',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
@@ -81,6 +82,7 @@ class NewsController extends Controller
             'title' => $request->title,
             'slug' => Str::slug($request->title),
             'description' => $request->description,
+            'video_link' => $request->video_link,
             'content' => $request->content,
             'is_published' => $request->is_published ?? false,
             'is_featured' => $request->is_featured ?? false,
@@ -150,7 +152,8 @@ class NewsController extends Controller
 
         $request->validate([
             'title' => ['required', 'string', 'max:255', Rule::unique('news', 'title')->ignore($news->id)],
-            'description' => 'required|string',
+            'description' => 'nullable|string',
+            'video_link' => 'nullable|url|max:500',
             'content' => 'required|string',
             'category' => 'nullable|string|max:255',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
@@ -164,6 +167,7 @@ class NewsController extends Controller
             'title' => $request->title,
             'slug' => Str::slug($request->title),
             'description' => $request->description,
+            'video_link' => $request->video_link,
             'content' => $request->content,
             'is_published' => $request->is_published ?? $news->is_published,
             'is_featured' => $request->is_featured ?? $news->is_featured,

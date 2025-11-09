@@ -39,7 +39,7 @@ class CourseMaterialController extends Controller
             'file' => 'nullable|file|max:10240', // 10MB max
             'external_url' => 'nullable|url',
             'content' => 'nullable|string',
-            'duration_minutes' => 'nullable|integer|min:1',
+            // removed duration_minutes
             'sort_order' => 'nullable|integer|min:0',
             'is_required' => 'nullable|in:true,false,1,0,"true","false"',
             'is_active' => 'nullable|in:true,false,1,0,"true","false"',
@@ -61,7 +61,7 @@ class CourseMaterialController extends Controller
             'type' => $request->type,
             'external_url' => $request->external_url,
             'content' => $request->content,
-            'duration_minutes' => $request->duration_minutes,
+            // removed duration_minutes
             'sort_order' => $request->sort_order ?? 0,
             'is_required' => $this->convertToBoolean($request->is_required) ?? false,
             'is_active' => $this->convertToBoolean($request->is_active) ?? true,
@@ -111,7 +111,7 @@ class CourseMaterialController extends Controller
             'file' => 'nullable|file|max:10240', // 10MB max
             'external_url' => 'nullable|url',
             'content' => 'nullable|string',
-            'duration_minutes' => 'nullable|integer|min:1',
+            // removed duration_minutes
             'sort_order' => 'nullable|integer|min:0',
             'is_required' => 'nullable|in:true,false,1,0,"true","false"',
             'is_active' => 'nullable|in:true,false,1,0,"true","false"',
@@ -127,7 +127,7 @@ class CourseMaterialController extends Controller
             'type' => $request->type,
             'external_url' => $request->external_url,
             'content' => $request->content,
-            'duration_minutes' => $request->duration_minutes,
+            // removed duration_minutes
             'sort_order' => $request->sort_order ?? $material->sort_order,
             'is_required' => $request->has('is_required') ? $this->convertToBoolean($request->is_required) : $material->is_required,
             'is_active' => $request->has('is_active') ? $this->convertToBoolean($request->is_active) : $material->is_active,
@@ -150,12 +150,13 @@ class CourseMaterialController extends Controller
         }
 
         $material->update($data);
+        $material->refresh();
         $material->load(['course', 'author']);
 
         return response()->json([
             'message' => 'Course material updated successfully',
             'material' => $material,
-        ]);
+        ], 200);
     }
 
     /**

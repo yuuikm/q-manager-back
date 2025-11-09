@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\CourseMaterialController;
 use App\Http\Controllers\Api\NewsCategoryController;
 use App\Http\Controllers\Api\DocumentCategoryController;
 use App\Http\Controllers\Api\CourseCategoryController;
+use App\Http\Controllers\Api\InternalDocumentController;
 
 // Public routes
 Route::post('/auth/register', [AuthController::class, 'register']);
@@ -105,6 +106,10 @@ Route::middleware(['token.auth', 'admin.auth'])->prefix('admin')->group(function
     Route::put('/users/{id}', [UserController::class, 'update']);
     Route::patch('/users/{id}/toggle-admin', [UserController::class, 'toggleAdmin']);
     Route::delete('/users/{id}', [UserController::class, 'destroy']);
+    
+    // Internal Documents management
+    Route::apiResource('internal-documents', InternalDocumentController::class);
+    Route::get('/internal-documents/{id}/download', [InternalDocumentController::class, 'download']);
 });
 
 // Test route

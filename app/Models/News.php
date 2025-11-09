@@ -13,6 +13,7 @@ class News extends Model
         'title',
         'slug',
         'description',
+        'video_link',
         'content',
         'image_path',
         'featured_image',

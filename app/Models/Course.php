@@ -18,9 +18,8 @@ class Course extends Model
         'type',
         'featured_image',
         'certificate_template',
-        'max_students',
+        // removed max_students and duration_hours
         'current_students',
-        'duration_hours',
         'requirements',
         'learning_outcomes',
         'zoom_link',
@@ -38,13 +37,13 @@ class Course extends Model
         'price' => 'decimal:2',
         'is_published' => 'boolean',
         'is_featured' => 'boolean',
-        'max_students' => 'integer',
+        // removed max_students and duration_hours
         'current_students' => 'integer',
-        'duration_hours' => 'integer',
         'views_count' => 'integer',
         'enrollments_count' => 'integer',
         'completion_rate' => 'integer',
         'schedule' => 'array',
+        'type' => 'array', // Cast type to array for JSON storage
     ];
 
     // Relationships
@@ -91,7 +90,15 @@ class Course extends Model
 
     public function scopeByType($query, $type)
     {
-        return $query->where('type', $type);
+        if (is_array($type)) {
+            // Filter by any of the types in the array
+            return $query->where(function($q) use ($type) {
+                foreach ($type as $t) {
+                    $q->orWhereJsonContains('type', $t);
+                }
+            });
+        }
+        return $query->whereJsonContains('type', $type);
     }
 
     public function scopeByCategory($query, $category)
