@@ -11,16 +11,18 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('internal_documents', function (Blueprint $table) {
-            $table->id();
-            $table->string('title');
-            $table->string('file_path');
-            $table->string('file_name');
-            $table->string('file_type');
-            $table->integer('file_size');
-            $table->foreignId('created_by')->constrained('users')->onDelete('cascade');
-            $table->timestamps();
-        });
+        if (!Schema::hasTable('internal_documents')) {
+            Schema::create('internal_documents', function (Blueprint $table) {
+                $table->id();
+                $table->string('title');
+                $table->string('file_path');
+                $table->string('file_name');
+                $table->string('file_type');
+                $table->integer('file_size');
+                $table->foreignId('created_by')->constrained('users')->onDelete('cascade');
+                $table->timestamps();
+            });
+        }
     }
 
     /**
