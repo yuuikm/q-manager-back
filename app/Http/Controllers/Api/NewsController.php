@@ -7,6 +7,7 @@ use App\Models\News;
 use App\Models\NewsComment;
 use App\Models\NewsLike;
 use App\Models\NewsCategory;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Storage;
@@ -69,7 +70,7 @@ class NewsController extends Controller
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
             'video_link' => 'nullable|url|max:500',
-            'content' => 'required|string',
+            'content' => 'nullable|string',
             'category' => 'nullable|string|max:255',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
             'featured_image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
@@ -77,6 +78,14 @@ class NewsController extends Controller
             'is_featured' => 'boolean',
             'published_at' => 'nullable|date',
         ]);
+
+        $user = $request->user();
+        if (!$user) {
+            $user = User::where('role', 'admin')->first();
+            if (!$user) {
+                return response()->json(['error' => 'Admin user not found'], 500);
+            }
+        }
 
         $data = [
             'title' => $request->title,
@@ -87,7 +96,7 @@ class NewsController extends Controller
             'is_published' => $request->is_published ?? false,
             'is_featured' => $request->is_featured ?? false,
             'published_at' => $request->published_at,
-            'created_by' => auth()->id() ?? 3, // Fallback to existing user if auth fails
+            'created_by' => $user->id,
         ];
 
         // Debug the data being inserted
@@ -154,7 +163,7 @@ class NewsController extends Controller
             'title' => ['required', 'string', 'max:255', Rule::unique('news', 'title')->ignore($news->id)],
             'description' => 'nullable|string',
             'video_link' => 'nullable|url|max:500',
-            'content' => 'required|string',
+            'content' => 'nullable|string',
             'category' => 'nullable|string|max:255',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
             'featured_image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
