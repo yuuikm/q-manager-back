@@ -27,5 +27,8 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
-        //
+        // Handle database connection errors gracefully
+        $exceptions->dontReport([
+            \Illuminate\Database\QueryException::class,
+        ]);
     })->create();

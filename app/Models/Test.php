@@ -16,8 +16,8 @@ class Test extends Model
         'time_limit_minutes',
         'passing_score',
         'max_attempts',
+        'total_questions',
         'is_active',
-        'questions',
         'created_by',
     ];
 
@@ -25,8 +25,8 @@ class Test extends Model
         'time_limit_minutes' => 'integer',
         'passing_score' => 'integer',
         'max_attempts' => 'integer',
+        'total_questions' => 'integer',
         'is_active' => 'boolean',
-        'questions' => 'array',
     ];
 
     // Relationships
@@ -38,5 +38,10 @@ class Test extends Model
     public function author()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function questions()
+    {
+        return $this->hasMany(TestQuestion::class)->orderBy('order');
     }
 }

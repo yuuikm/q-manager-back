@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Test;
+use App\Models\TestQuestion;
 use App\Models\Course;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class TestController extends Controller
@@ -16,7 +18,7 @@ class TestController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Test::with(['course', 'author']);
+        $query = Test::with(['course', 'author', 'questions']);
 
         // Filter by course
         if ($request->has('course_id')) {
@@ -55,20 +57,60 @@ class TestController extends Controller
             'questions.*.explanation' => 'nullable|string|max:1000',
         ]);
 
-        $test = Test::create([
-            'title' => $request->title,
-            'description' => $request->description,
-            'course_id' => $request->course_id,
-            'time_limit_minutes' => $request->time_limit_minutes,
-            'passing_score' => $request->passing_score,
-            'max_attempts' => $request->max_attempts,
-            'is_active' => $request->is_active ?? true,
-            'questions' => $request->questions,
-            'created_by' => auth()->id(),
-        ]);
+        // Validate total_questions doesn't exceed available questions
+        $totalQuestions = $request->total_questions ?? count($request->questions);
+        if ($totalQuestions > count($request->questions)) {
+            $totalQuestions = count($request->questions);
+        }
 
-        $test->load(['course', 'author']);
-        return response()->json($test, 201);
+        DB::beginTransaction();
+        try {
+            // Get created_by user ID with fallback
+            $createdBy = auth()->id();
+            if (!$createdBy) {
+                // Fallback to first admin user
+                $adminUser = \App\Models\User::where('role', 'admin')->first();
+                if ($adminUser) {
+                    $createdBy = $adminUser->id;
+                } else {
+                    return response()->json(['message' => 'Не удалось определить автора теста'], 500);
+                }
+            }
+
+            $test = Test::create([
+                'title' => $request->title,
+                'description' => $request->description,
+                'course_id' => $request->course_id,
+                'time_limit_minutes' => $request->time_limit_minutes,
+                'passing_score' => $request->passing_score,
+                'max_attempts' => $request->max_attempts,
+                'total_questions' => $totalQuestions,
+                'is_active' => $request->is_active ?? true,
+                'created_by' => $createdBy,
+            ]);
+
+            // Create test questions
+            foreach ($request->questions as $index => $questionData) {
+                TestQuestion::create([
+                    'test_id' => $test->id,
+                    'question' => $questionData['question'],
+                    'type' => $questionData['type'],
+                    'options' => $questionData['options'] ?? null,
+                    'correct_answer' => $questionData['correct_answer'],
+                    'points' => $questionData['points'],
+                    'explanation' => $questionData['explanation'] ?? null,
+                    'order' => $index,
+                ]);
+            }
+
+            DB::commit();
+            $test->load(['course', 'author', 'questions']);
+            return response()->json($test, 201);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('Test creation error: ' . $e->getMessage());
+            return response()->json(['message' => 'Ошибка при создании теста: ' . $e->getMessage()], 500);
+        }
     }
 
     /**
@@ -76,7 +118,7 @@ class TestController extends Controller
      */
     public function show(string $id)
     {
-        $test = Test::with(['course', 'author'])->findOrFail($id);
+        $test = Test::with(['course', 'author', 'questions'])->findOrFail($id);
         return response()->json($test);
     }
 
@@ -87,6 +129,21 @@ class TestController extends Controller
     {
         $test = Test::findOrFail($id);
 
+        // Check if this is a simple status toggle (only is_active is provided)
+        $isStatusToggle = $request->has('is_active') && count($request->all()) === 1;
+
+        if ($isStatusToggle) {
+            // Simple status toggle
+            $request->validate([
+                'is_active' => 'required|boolean',
+            ]);
+            
+            $test->update(['is_active' => $request->is_active]);
+            $test->load(['course', 'author', 'questions']);
+            return response()->json($test);
+        }
+
+        // Full test update
         $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
@@ -94,6 +151,7 @@ class TestController extends Controller
             'time_limit_minutes' => 'required|integer|min:1|max:300',
             'passing_score' => 'required|integer|min:1|max:100',
             'max_attempts' => 'required|integer|min:1|max:10',
+            'total_questions' => 'nullable|integer|min:1',
             'is_active' => 'boolean',
             'questions' => 'required|array|min:1',
             'questions.*.question' => 'required|string|max:1000',
@@ -105,19 +163,48 @@ class TestController extends Controller
             'questions.*.explanation' => 'nullable|string|max:1000',
         ]);
 
-        $test->update([
-            'title' => $request->title,
-            'description' => $request->description,
-            'course_id' => $request->course_id,
-            'time_limit_minutes' => $request->time_limit_minutes,
-            'passing_score' => $request->passing_score,
-            'max_attempts' => $request->max_attempts,
-            'is_active' => $request->is_active ?? $test->is_active,
-            'questions' => $request->questions,
-        ]);
+        // Validate total_questions doesn't exceed available questions
+        $totalQuestions = $request->total_questions ?? count($request->questions);
+        if ($totalQuestions > count($request->questions)) {
+            $totalQuestions = count($request->questions);
+        }
 
-        $test->load(['course', 'author']);
-        return response()->json($test);
+        DB::beginTransaction();
+        try {
+            $test->update([
+                'title' => $request->title,
+                'description' => $request->description,
+                'course_id' => $request->course_id,
+                'time_limit_minutes' => $request->time_limit_minutes,
+                'passing_score' => $request->passing_score,
+                'max_attempts' => $request->max_attempts,
+                'total_questions' => $totalQuestions,
+                'is_active' => $request->is_active ?? $test->is_active,
+            ]);
+
+            // Delete old questions and create new ones
+            $test->questions()->delete();
+            foreach ($request->questions as $index => $questionData) {
+                TestQuestion::create([
+                    'test_id' => $test->id,
+                    'question' => $questionData['question'],
+                    'type' => $questionData['type'],
+                    'options' => $questionData['options'] ?? null,
+                    'correct_answer' => $questionData['correct_answer'],
+                    'points' => $questionData['points'],
+                    'explanation' => $questionData['explanation'] ?? null,
+                    'order' => $index,
+                ]);
+            }
+
+            DB::commit();
+            $test->load(['course', 'author', 'questions']);
+            return response()->json($test);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('Test update error: ' . $e->getMessage());
+            return response()->json(['message' => 'Ошибка при обновлении теста: ' . $e->getMessage()], 500);
+        }
     }
 
     /**
@@ -136,7 +223,7 @@ class TestController extends Controller
     public function getCourseTests(string $courseId)
     {
         $course = Course::findOrFail($courseId);
-        $tests = $course->tests()->with('author')->get();
+        $tests = $course->tests()->with(['author', 'questions'])->get();
         return response()->json($tests);
     }
 
@@ -145,26 +232,70 @@ class TestController extends Controller
      */
     public function duplicate(string $id)
     {
-        $originalTest = Test::findOrFail($id);
+        $originalTest = Test::with('questions')->findOrFail($id);
         
-        $newTest = Test::create([
-            'title' => $originalTest->title . ' (Copy)',
-            'description' => $originalTest->description,
-            'course_id' => $originalTest->course_id,
-            'time_limit_minutes' => $originalTest->time_limit_minutes,
-            'passing_score' => $originalTest->passing_score,
-            'max_attempts' => $originalTest->max_attempts,
-            'is_active' => false, // Start as inactive
-            'questions' => $originalTest->questions,
-            'created_by' => auth()->id(),
-        ]);
+        DB::beginTransaction();
+        try {
+            // Get created_by user ID with fallback
+            $createdBy = auth()->id();
+            if (!$createdBy) {
+                // Fallback to first admin user
+                $adminUser = \App\Models\User::where('role', 'admin')->first();
+                if ($adminUser) {
+                    $createdBy = $adminUser->id;
+                } else {
+                    return response()->json(['message' => 'Не удалось определить автора теста'], 500);
+                }
+            }
 
-        $newTest->load(['course', 'author']);
-        return response()->json($newTest, 201);
+            $newTest = Test::create([
+                'title' => $originalTest->title . ' (Copy)',
+                'description' => $originalTest->description,
+                'course_id' => $originalTest->course_id,
+                'time_limit_minutes' => $originalTest->time_limit_minutes,
+                'passing_score' => $originalTest->passing_score,
+                'max_attempts' => $originalTest->max_attempts,
+                'total_questions' => $originalTest->total_questions,
+                'is_active' => false, // Start as inactive
+                'created_by' => $createdBy,
+            ]);
+
+            // Duplicate questions
+            foreach ($originalTest->questions as $question) {
+                TestQuestion::create([
+                    'test_id' => $newTest->id,
+                    'question' => $question->question,
+                    'type' => $question->type,
+                    'options' => $question->options,
+                    'correct_answer' => $question->correct_answer,
+                    'points' => $question->points,
+                    'explanation' => $question->explanation,
+                    'order' => $question->order,
+                ]);
+            }
+
+            DB::commit();
+            $newTest->load(['course', 'author', 'questions']);
+            return response()->json($newTest, 201);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('Test duplication error: ' . $e->getMessage());
+            return response()->json(['message' => 'Ошибка при дублировании теста: ' . $e->getMessage()], 500);
+        }
     }
 
     /**
      * Parse Excel file and extract test questions
+     * Expected format:
+     * Column A: Тип вопроса (Question Type) - optional
+     * Column B: Вопрос (Question)
+     * Column C: Ответ 1 (Answer 1)
+     * Column D: Ответ 2 (Answer 2)
+     * Column E: Ответ 3 (Answer 3)
+     * Column F: Ответ 4 (Answer 4)
+     * Column G: Ответ 5 (Answer 5) - optional
+     * Column H: Балл (Score) - optional, defaults to 5
+     * One of the answers contains "(прав)" which marks it as correct
      */
     public function parseExcel(Request $request)
     {
@@ -183,64 +314,74 @@ class TestController extends Controller
             $highestRow = $worksheet->getHighestRow();
 
             $questions = [];
-            $currentQuestion = null;
-            $questionNumber = 0;
 
-            // Parse the Excel file row by row
-            for ($row = 1; $row <= $highestRow; $row++) {
-                $cellA = $worksheet->getCell('A' . $row)->getValue();
-                $cellB = $worksheet->getCell('B' . $row)->getValue();
-                $cellC = $worksheet->getCell('C' . $row)->getValue();
+            // Start from row 2 (skip header row)
+            for ($row = 2; $row <= $highestRow; $row++) {
+                // Get cell values
+                $questionType = trim((string)$worksheet->getCell('A' . $row)->getValue());
+                $questionText = trim((string)$worksheet->getCell('B' . $row)->getValue());
+                $answer1 = trim((string)$worksheet->getCell('C' . $row)->getValue());
+                $answer2 = trim((string)$worksheet->getCell('D' . $row)->getValue());
+                $answer3 = trim((string)$worksheet->getCell('E' . $row)->getValue());
+                $answer4 = trim((string)$worksheet->getCell('F' . $row)->getValue());
+                $answer5 = trim((string)$worksheet->getCell('G' . $row)->getValue());
+                $points = trim((string)$worksheet->getCell('H' . $row)->getValue());
 
-                // Skip empty rows
-                if (empty($cellA) && empty($cellB) && empty($cellC)) {
+                // Skip empty rows (if question text is empty)
+                if (empty($questionText)) {
                     continue;
                 }
 
-                // Check if this is a question (usually starts with a number or contains question text)
-                if ($this->isQuestionRow($cellA, $cellB)) {
-                    // Save previous question if exists
-                    if ($currentQuestion) {
-                        $questions[] = $currentQuestion;
-                    }
+                // Collect all answers
+                $answers = [];
+                if (!empty($answer1)) $answers[] = $answer1;
+                if (!empty($answer2)) $answers[] = $answer2;
+                if (!empty($answer3)) $answers[] = $answer3;
+                if (!empty($answer4)) $answers[] = $answer4;
+                if (!empty($answer5)) $answers[] = $answer5;
 
-                    // Start new question
-                    $questionNumber++;
-                    $currentQuestion = [
-                        'question' => trim($cellA . ' ' . $cellB),
-                        'type' => 'single_choice', // Default type
-                        'options' => [],
-                        'correct_answer' => '',
-                        'points' => 1,
-                        'explanation' => null,
-                    ];
-                }
-                // Check if this is an answer option
-                elseif ($currentQuestion && $this->isAnswerRow($cellA, $cellB, $cellC)) {
-                    $answerText = trim($cellA . ' ' . $cellB . ' ' . $cellC);
-                    
-                    // Check if this is the correct answer (contains "(прав)")
-                    if (strpos($answerText, '(прав)') !== false) {
-                        // Remove the (прав) marker and set as correct answer
-                        $cleanAnswer = str_replace('(прав)', '', $answerText);
+                // Find correct answer (contains "(прав)") and remove the marker
+                $correctAnswer = '';
+                $cleanAnswers = [];
+
+                foreach ($answers as $answer) {
+                    if (stripos($answer, '(прав)') !== false) {
+                        // Remove "(прав)" marker (case-insensitive)
+                        $cleanAnswer = preg_replace('/\(прав\)/i', '', $answer);
                         $cleanAnswer = trim($cleanAnswer);
-                        $currentQuestion['correct_answer'] = $cleanAnswer;
-                        $currentQuestion['options'][] = $cleanAnswer;
+                        $correctAnswer = $cleanAnswer;
+                        $cleanAnswers[] = $cleanAnswer;
                     } else {
-                        $currentQuestion['options'][] = $answerText;
+                        $cleanAnswers[] = trim($answer);
                     }
                 }
-            }
 
-            // Add the last question
-            if ($currentQuestion) {
-                $questions[] = $currentQuestion;
+                // Validate we have at least 2 answers and a correct answer
+                if (count($cleanAnswers) < 2 || empty($correctAnswer)) {
+                    continue; // Skip invalid questions
+                }
+
+                // Parse points (default to 5 if not set)
+                $questionPoints = 5;
+                if (!empty($points) && is_numeric($points)) {
+                    $questionPoints = (int)$points;
+                }
+
+                // Create question structure
+                $questions[] = [
+                    'question' => $questionText,
+                    'type' => 'single_choice',
+                    'options' => $cleanAnswers,
+                    'correct_answer' => $correctAnswer,
+                    'points' => $questionPoints,
+                    'explanation' => null,
+                ];
             }
 
             // Validate that we have questions
             if (empty($questions)) {
                 return response()->json([
-                    'message' => 'Не удалось найти вопросы в Excel файле. Убедитесь, что файл содержит вопросы и варианты ответов.'
+                    'message' => 'Не удалось найти вопросы в Excel файле. Убедитесь, что файл содержит вопросы и варианты ответов в правильном формате.'
                 ], 422);
             }
 
@@ -250,11 +391,12 @@ class TestController extends Controller
             // Create test data structure
             $testData = [
                 'title' => 'Тест из Excel - ' . $course->title,
-                'description' => 'Тест, созданный из Excel файла',
+                'description' => 'Тест',
                 'course_id' => $courseId,
                 'time_limit_minutes' => 60,
                 'passing_score' => 70,
                 'max_attempts' => 3,
+                'total_questions' => count($questions), // Default to all questions
                 'is_active' => false, // Start as inactive for review
                 'questions' => $questions,
             ];
@@ -269,40 +411,5 @@ class TestController extends Controller
         }
     }
 
-    /**
-     * Check if a row contains a question
-     */
-    private function isQuestionRow($cellA, $cellB)
-    {
-        $text = trim($cellA . ' ' . $cellB);
-        
-        // Check if it starts with a number followed by a dot or contains question keywords
-        if (preg_match('/^\d+\./', $text) || 
-            preg_match('/^\d+\)/', $text) ||
-            preg_match('/вопрос|question/i', $text) ||
-            (strlen($text) > 20 && !strpos($text, '(прав)'))) {
-            return true;
-        }
-        
-        return false;
-    }
-
-    /**
-     * Check if a row contains an answer option
-     */
-    private function isAnswerRow($cellA, $cellB, $cellC)
-    {
-        $text = trim($cellA . ' ' . $cellB . ' ' . $cellC);
-        
-        // Check if it looks like an answer option
-        if (preg_match('/^[а-яёa-z]\)/i', $text) || 
-            preg_match('/^[а-яёa-z]\./i', $text) ||
-            preg_match('/^\d+\)/', $text) ||
-            preg_match('/^\d+\./', $text) ||
-            strpos($text, '(прав)') !== false) {
-            return true;
-        }
-        
-        return false;
-    }
 }
+

@@ -26,18 +26,15 @@ WORKDIR /var/www
 # Copy the entire application first
 COPY . .
 
-# Install Composer dependencies
-RUN composer install --no-dev --optimize-autoloader --no-interaction
+# Install Composer dependencies (will be overridden in docker-compose for dev)
+RUN composer install --no-interaction || true
 
 # Create required storage directories
-RUN mkdir -p storage/app/public/documents storage/app/public/previews && \
+RUN mkdir -p storage/app/public/documents storage/app/public/previews storage/app/public/iso-documents storage/app/public/news/images storage/app/public/course-materials && \
     chown -R www-data:www-data storage
 
-# Set proper permissions
-RUN chown -R www-data:www-data /var/www
-
-# Change current user to www
-USER www-data
+# Set proper permissions (for development, we'll run as root to avoid volume permission issues)
+# USER www-data
 
 # Expose port 8000
 EXPOSE 8000
