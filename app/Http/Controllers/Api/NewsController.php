@@ -11,6 +11,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 
 class NewsController extends Controller
@@ -50,6 +51,19 @@ class NewsController extends Controller
             });
         }
 
+        // Filter by author
+        if ($request->has('author_id') && $request->author_id) {
+            $query->where('created_by', $request->author_id);
+        }
+
+        // Filter by date range
+        if ($request->has('start_date') && $request->start_date) {
+            $query->whereDate('created_at', '>=', $request->start_date);
+        }
+        if ($request->has('end_date') && $request->end_date) {
+            $query->whereDate('created_at', '<=', $request->end_date);
+        }
+
         $news = $query->orderBy('created_at', 'desc')->paginate(15);
         return response()->json($news);
     }
@@ -60,7 +74,7 @@ class NewsController extends Controller
     public function store(Request $request)
     {
         // Debug authentication
-        \Log::info('News store - Auth check:', [
+        Log::info('News store - Auth check:', [
             'user_id' => auth()->id(),
             'user' => auth()->user(),
             'token' => $request->bearerToken(),
@@ -92,7 +106,7 @@ class NewsController extends Controller
             'slug' => Str::slug($request->title),
             'description' => $request->description,
             'video_link' => $request->video_link,
-            'content' => $request->content,
+            'content' => $request->input('content'),
             'is_published' => $request->is_published ?? false,
             'is_featured' => $request->is_featured ?? false,
             'published_at' => $request->published_at,
@@ -100,7 +114,7 @@ class NewsController extends Controller
         ];
 
         // Debug the data being inserted
-        \Log::info('News data to be inserted:', $data);
+        Log::info('News data to be inserted:', $data);
 
         // Handle image upload
         if ($request->hasFile('image')) {
@@ -177,14 +191,14 @@ class NewsController extends Controller
             'slug' => Str::slug($request->title),
             'description' => $request->description,
             'video_link' => $request->video_link,
-            'content' => $request->content,
+            'content' => $request->input('content'),
             'is_published' => $request->is_published ?? $news->is_published,
             'is_featured' => $request->is_featured ?? $news->is_featured,
             'published_at' => $request->published_at ?? $news->published_at,
         ];
 
         // Debug the data being updated
-        \Log::info('News data to be updated:', $data);
+        Log::info('News data to be updated:', $data);
 
         // Handle image upload
         if ($request->hasFile('image')) {
@@ -260,7 +274,7 @@ class NewsController extends Controller
         $user = auth()->user();
 
         $like = NewsLike::where('news_id', $news->id)
-                       ->where('user_id', $user->id)
+                       ->where('user_id', auth()->id())
                        ->first();
 
         if ($like) {
@@ -270,7 +284,7 @@ class NewsController extends Controller
         } else {
             NewsLike::create([
                 'news_id' => $news->id,
-                'user_id' => $user->id,
+                'user_id' => auth()->id(),
             ]);
             $news->increment('likes_count');
             $liked = true;
@@ -296,8 +310,8 @@ class NewsController extends Controller
 
         $comment = NewsComment::create([
             'news_id' => $news->id,
-            'user_id' => $user->id,
-            'content' => $request->content,
+            'user_id' => auth()->id(),
+            'content' => $request->input('content'),
         ]);
 
         $news->increment('comments_count');

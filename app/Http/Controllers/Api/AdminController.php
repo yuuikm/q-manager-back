@@ -8,7 +8,10 @@ use App\Models\DocumentCategory;
 use App\Services\PdfParserPreviewService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use App\Models\User;
 
 class AdminController extends Controller
@@ -65,7 +68,7 @@ class AdminController extends Controller
         ]);
 
         if ($validator->fails()) {
-            \Log::error('Document upload validation failed:', $validator->errors()->toArray());
+            Log::error('Document upload validation failed:', $validator->errors()->toArray());
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
@@ -74,7 +77,7 @@ class AdminController extends Controller
             
             
             if (!$file || !$file->isValid()) {
-                \Log::error('File upload failed:', [
+                Log::error('File upload failed:', [
                     'has_file' => $request->hasFile('file'),
                     'file_valid' => $file ? $file->isValid() : false,
                     'upload_error' => $file ? $file->getError() : 'no file',
@@ -100,7 +103,7 @@ class AdminController extends Controller
                 // Create new category
                 $category = DocumentCategory::create([
                     'name' => $categoryName,
-                    'slug' => \Str::slug($categoryName),
+                    'slug' => Str::slug($categoryName),
                 ]);
             }
 
@@ -121,7 +124,7 @@ class AdminController extends Controller
             ];
             
             // Only add preview_pages if column exists
-            if (\Schema::hasColumn('documents', 'preview_pages')) {
+            if (Schema::hasColumn('documents', 'preview_pages')) {
                 $documentData['preview_pages'] = $request->preview_pages ?? 3;
             }
             
@@ -131,7 +134,7 @@ class AdminController extends Controller
             if (strtolower($file->getClientOriginalExtension()) === 'pdf') {
                 // Get preview pages count
                 $previewPages = 3;
-                if (\Schema::hasColumn('documents', 'preview_pages') && isset($document->preview_pages)) {
+                if (Schema::hasColumn('documents', 'preview_pages') && isset($document->preview_pages)) {
                     $previewPages = $document->preview_pages;
                 } else {
                     $previewPages = $request->preview_pages ?? 3;
@@ -143,18 +146,18 @@ class AdminController extends Controller
                 if ($pdfParserService->isAvailable()) {
                     $success = $pdfParserService->generateDocumentPreview($document, $previewPages);
                     if ($success) {
-                        \Log::info('PDF preview generated successfully with PDF Parser + mPDF', [
+                        Log::info('PDF preview generated successfully with PDF Parser + mPDF', [
                             'document_id' => $document->id,
                             'preview_pages' => $previewPages
                         ]);
                     } else {
-                        \Log::error('Failed to generate PDF preview with PDF Parser', [
+                        Log::error('Failed to generate PDF preview with PDF Parser', [
                             'document_id' => $document->id,
                             'preview_pages' => $previewPages
                         ]);
                     }
                 } else {
-                    \Log::warning('PDF Parser service not available, skipping preview generation', [
+                    Log::warning('PDF Parser service not available, skipping preview generation', [
                         'document_id' => $document->id
                     ]);
                 }
@@ -183,6 +186,15 @@ class AdminController extends Controller
             ->when($request->search, function ($query, $search) {
                 return $query->where('title', 'like', "%{$search}%")
                     ->orWhere('description', 'like', "%{$search}%");
+            })
+            ->when($request->author_id, function ($query, $authorId) {
+                return $query->where('created_by', $authorId);
+            })
+            ->when($request->start_date, function ($query, $startDate) {
+                return $query->whereDate('created_at', '>=', $startDate);
+            })
+            ->when($request->end_date, function ($query, $endDate) {
+                return $query->whereDate('created_at', '<=', $endDate);
             })
             ->orderBy('created_at', 'desc')
             ->paginate(10);
@@ -263,7 +275,7 @@ class AdminController extends Controller
             // Create new category
             $category = DocumentCategory::create([
                 'name' => $categoryName,
-                'slug' => \Str::slug($categoryName),
+                'slug' => Str::slug($categoryName),
             ]);
         }
 
@@ -294,12 +306,12 @@ class AdminController extends Controller
                 if ($pdfParserService->isAvailable()) {
                     $success = $pdfParserService->generateDocumentPreview($document, $previewPages);
                     if ($success) {
-                        \Log::info('PDF preview regenerated successfully with PDF Parser + mPDF', [
+                        Log::info('PDF preview regenerated successfully with PDF Parser + mPDF', [
                             'document_id' => $document->id,
                             'preview_pages' => $previewPages
                         ]);
                     } else {
-                        \Log::error('Failed to regenerate PDF preview with PDF Parser', [
+                        Log::error('Failed to regenerate PDF preview with PDF Parser', [
                             'document_id' => $document->id,
                             'preview_pages' => $previewPages
                         ]);
@@ -342,6 +354,12 @@ class AdminController extends Controller
             'message' => 'Document status updated successfully',
             'document' => $document->load(['creator', 'category']),
         ]);
+    }
+
+    public function getAdmins()
+    {
+        $admins = User::where('role', 'admin')->orderBy('first_name')->get();
+        return response()->json($admins);
     }
 
     public function getUsers(Request $request)
@@ -416,7 +434,7 @@ class AdminController extends Controller
         $fileName = $document->preview_file_name ?: $document->file_name;
         
         // Log preview access
-        \Log::info('Document preview accessed', [
+        Log::info('Document preview accessed', [
             'document_id' => $id,
             'using_preview_file' => !is_null($document->preview_file_path),
             'file_path' => $filePath,

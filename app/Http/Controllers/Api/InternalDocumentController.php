@@ -23,6 +23,17 @@ class InternalDocumentController extends Controller
             $query->where('title', 'like', "%{$search}%");
         }
 
+        if ($request->has('author_id') && $request->author_id) {
+            $query->where('created_by', $request->author_id);
+        }
+
+        if ($request->has('start_date') && $request->start_date) {
+            $query->whereDate('created_at', '>=', $request->start_date);
+        }
+        if ($request->has('end_date') && $request->end_date) {
+            $query->whereDate('created_at', '<=', $request->end_date);
+        }
+
         $documents = $query->orderBy('created_at', 'desc')->paginate(15);
         return response()->json($documents);
     }

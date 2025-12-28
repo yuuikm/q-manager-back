@@ -9,6 +9,7 @@ use App\Models\Course;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class TestController extends Controller
@@ -28,6 +29,25 @@ class TestController extends Controller
         // Filter by active status
         if ($request->has('active')) {
             $query->where('is_active', $request->boolean('active'));
+        }
+
+        // Search by title
+        if ($request->has('search')) {
+            $search = $request->get('search');
+            $query->where('title', 'like', "%{$search}%");
+        }
+
+        // Filter by author
+        if ($request->has('author_id') && $request->author_id) {
+            $query->where('created_by', $request->author_id);
+        }
+
+        // Filter by date range
+        if ($request->has('start_date') && $request->start_date) {
+            $query->whereDate('created_at', '>=', $request->start_date);
+        }
+        if ($request->has('end_date') && $request->end_date) {
+            $query->whereDate('created_at', '<=', $request->end_date);
         }
 
         $tests = $query->orderBy('created_at', 'desc')->paginate(15);
@@ -108,7 +128,7 @@ class TestController extends Controller
             return response()->json($test, 201);
         } catch (\Exception $e) {
             DB::rollBack();
-            \Log::error('Test creation error: ' . $e->getMessage());
+            Log::error('Test creation error: ' . $e->getMessage());
             return response()->json(['message' => 'Ошибка при создании теста: ' . $e->getMessage()], 500);
         }
     }
@@ -202,7 +222,7 @@ class TestController extends Controller
             return response()->json($test);
         } catch (\Exception $e) {
             DB::rollBack();
-            \Log::error('Test update error: ' . $e->getMessage());
+            Log::error('Test update error: ' . $e->getMessage());
             return response()->json(['message' => 'Ошибка при обновлении теста: ' . $e->getMessage()], 500);
         }
     }
@@ -279,7 +299,7 @@ class TestController extends Controller
             return response()->json($newTest, 201);
         } catch (\Exception $e) {
             DB::rollBack();
-            \Log::error('Test duplication error: ' . $e->getMessage());
+            Log::error('Test duplication error: ' . $e->getMessage());
             return response()->json(['message' => 'Ошибка при дублировании теста: ' . $e->getMessage()], 500);
         }
     }
@@ -404,7 +424,7 @@ class TestController extends Controller
             return response()->json($testData);
 
         } catch (\Exception $e) {
-            \Log::error('Excel parsing error: ' . $e->getMessage());
+            Log::error('Excel parsing error: ' . $e->getMessage());
             return response()->json([
                 'message' => 'Ошибка при обработке Excel файла: ' . $e->getMessage()
             ], 422);

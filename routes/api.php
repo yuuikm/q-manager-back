@@ -14,6 +14,9 @@ use App\Http\Controllers\Api\NewsCategoryController;
 use App\Http\Controllers\Api\DocumentCategoryController;
 use App\Http\Controllers\Api\CourseCategoryController;
 use App\Http\Controllers\Api\InternalDocumentController;
+use App\Http\Controllers\Api\ManagerHelpController;
+use App\Http\Controllers\Api\ManagerHelpCategoryController;
+use App\Http\Controllers\Api\SliderController;
 
 // Public routes
 Route::post('/auth/register', [AuthController::class, 'register']);
@@ -36,6 +39,14 @@ Route::get('/courses/{id}', [CourseController::class, 'show']);
 Route::get('/courses/{id}/materials', [CourseController::class, 'materials']);
 Route::post('/courses/{id}/enroll', [CourseController::class, 'enroll']);
 Route::get('/course-categories', [CourseCategoryController::class, 'index']);
+
+// Public Manager Help routes
+Route::get('/manager-help', [ManagerHelpController::class, 'index']);
+Route::get('/manager-help/{id}', [ManagerHelpController::class, 'show']);
+Route::get('/manager-help-categories', [ManagerHelpCategoryController::class, 'index']);
+
+// Public Slider routes
+Route::get('/sliders', [SliderController::class, 'index']);
 
 // Protected routes
 // Public refresh token route (no auth required)
@@ -106,10 +117,21 @@ Route::middleware(['token.auth', 'admin.auth'])->prefix('admin')->group(function
     Route::put('/users/{id}', [UserController::class, 'update']);
     Route::patch('/users/{id}/toggle-admin', [UserController::class, 'toggleAdmin']);
     Route::delete('/users/{id}', [UserController::class, 'destroy']);
+    Route::get('/get-admins', [AdminController::class, 'getAdmins']);
     
     // Internal Documents management
     Route::apiResource('internal-documents', InternalDocumentController::class);
     Route::get('/internal-documents/{id}/download', [InternalDocumentController::class, 'download']);
+
+    // Manager Help management
+    Route::apiResource('manager-help', ManagerHelpController::class);
+    Route::patch('/manager-help/{id}/toggle-status', [ManagerHelpController::class, 'toggleStatus']);
+    Route::apiResource('manager-help-categories', ManagerHelpCategoryController::class);
+
+    // Slider management
+    Route::get('/sliders', [SliderController::class, 'adminIndex']);
+    Route::apiResource('sliders', SliderController::class)->except(['index']);
+    Route::patch('/sliders/{id}/toggle-status', [SliderController::class, 'toggleStatus']);
 });
 
 // Test route

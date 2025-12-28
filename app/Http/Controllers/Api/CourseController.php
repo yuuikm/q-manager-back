@@ -65,6 +65,19 @@ class CourseController extends Controller
             });
         }
 
+        // Filter by author
+        if ($request->has('author_id') && $request->author_id) {
+            $query->where('created_by', $request->author_id);
+        }
+
+        // Filter by date range
+        if ($request->has('start_date') && $request->start_date) {
+            $query->whereDate('created_at', '>=', $request->start_date);
+        }
+        if ($request->has('end_date') && $request->end_date) {
+            $query->whereDate('created_at', '<=', $request->end_date);
+        }
+
         $courses = $query->orderBy('created_at', 'desc')->paginate(15);
         return response()->json($courses);
     }
@@ -122,7 +135,7 @@ class CourseController extends Controller
             'title' => $request->title,
             'slug' => Str::slug($request->title),
             'description' => $request->description,
-            'content' => $request->content,
+            'content' => $request->input('content'),
             'price' => $request->price,
             'type' => $typeData, // Store as JSON array
             // removed max_students and duration_hours
@@ -230,7 +243,7 @@ class CourseController extends Controller
             'title' => $request->title,
             'slug' => Str::slug($request->title),
             'description' => $request->description,
-            'content' => $request->content,
+            'content' => $request->input('content'),
             'price' => $request->price,
             'type' => $typeData, // Store as JSON array
             // removed max_students and duration_hours
