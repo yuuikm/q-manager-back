@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Document;
 use App\Models\DocumentCategory;
+use App\Models\DocumentSubcategory;
 use App\Services\PdfParserPreviewService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -18,7 +19,7 @@ class AdminController extends Controller
 {
     public function getPublicDocument($id)
     {
-        $document = Document::with(['creator', 'category'])
+        $document = Document::with(['creator', 'category', 'subcategory'])
             ->where('is_active', true)
             ->findOrFail($id);
         
@@ -27,12 +28,15 @@ class AdminController extends Controller
 
     public function getPublicDocuments(Request $request)
     {
-        $documents = Document::with(['creator', 'category'])
+        $documents = Document::with(['creator', 'category', 'subcategory'])
             ->where('is_active', true)
             ->when($request->category, function ($query, $category) {
                 return $query->whereHas('category', function($q) use ($category) {
                     $q->where('name', $category);
                 });
+            })
+            ->when($request->subcategory_id, function ($query, $subcategoryId) {
+                return $query->where('subcategory_id', $subcategoryId);
             })
             ->when($request->search, function ($query, $search) {
                 return $query->where('title', 'like', "%{$search}%")
@@ -57,7 +61,17 @@ class AdminController extends Controller
             'title' => 'required|string|max:255',
             'description' => 'nullable|string|max:500',
             'category' => 'required|string|max:100',
-            'price' => 'required|numeric|min:0',
+            'subcategory' => 'nullable|string|max:100',
+            'document_type' => 'nullable|string|in:' . implode(',', [
+                Document::TYPE_DOCUMENTED_PROCEDURES,
+                Document::TYPE_MAIN_PROCESS_MAPS,
+                Document::TYPE_SUPPORTING_PROCESS_MAPS,
+                Document::TYPE_MANAGEMENT_PROCESS_MAPS,
+                Document::TYPE_QUALITY_MANUAL,
+                Document::TYPE_PRODUCTION_INSTRUCTIONS,
+                Document::TYPE_GMP_MANUAL,
+            ]),
+            'price' => 'required|integer|min:0',
             'preview_pages' => 'required|integer|min:1|max:10',
             'file' => 'required|file|mimes:pdf,doc,docx,txt,rtf,jpg,jpeg,png,gif|max:10240',
         ], [
@@ -107,6 +121,25 @@ class AdminController extends Controller
                 ]);
             }
 
+            // Handle subcategory - find existing or create new (if provided)
+            $subcategoryId = null;
+            if ($request->has('subcategory') && !empty($request->subcategory)) {
+                $subcategoryName = $request->subcategory;
+                $subcategory = DocumentSubcategory::where('name', $subcategoryName)
+                    ->where('category_id', $category->id)
+                    ->first();
+                
+                if (!$subcategory) {
+                    // Create new subcategory
+                    $subcategory = DocumentSubcategory::create([
+                        'name' => $subcategoryName,
+                        'slug' => Str::slug($subcategoryName),
+                        'category_id' => $category->id,
+                    ]);
+                }
+                $subcategoryId = $subcategory->id;
+            }
+
             $documentData = [
                 'title' => $request->title,
                 'description' => $request->description,
@@ -121,6 +154,8 @@ class AdminController extends Controller
                 'created_by' => $request->user()->id,
                 'buy_number' => 0,
                 'category_id' => $category->id,
+                'subcategory_id' => $subcategoryId,
+                'document_type' => $request->document_type,
             ];
             
             // Only add preview_pages if column exists
@@ -165,7 +200,7 @@ class AdminController extends Controller
 
             return response()->json([
                 'message' => 'Document uploaded successfully',
-                'document' => $document->load(['creator', 'category']),
+                'document' => $document->load(['creator', 'category', 'subcategory']),
             ], 201);
         } catch (\Exception $e) {
             return response()->json([
@@ -177,7 +212,7 @@ class AdminController extends Controller
 
     public function getDocuments(Request $request)
     {
-        $documents = Document::with(['creator', 'category'])
+        $documents = Document::with(['creator', 'category', 'subcategory'])
             ->when($request->category, function ($query, $category) {
                 return $query->whereHas('category', function($q) use ($category) {
                     $q->where('name', $category);
@@ -210,7 +245,17 @@ class AdminController extends Controller
             'title' => 'required|string|max:255',
             'description' => 'nullable|string|max:500',
             'category' => 'required|string|max:100',
-            'price' => 'required|numeric|min:0',
+            'subcategory' => 'nullable|string|max:100',
+            'document_type' => 'nullable|string|in:' . implode(',', [
+                Document::TYPE_DOCUMENTED_PROCEDURES,
+                Document::TYPE_MAIN_PROCESS_MAPS,
+                Document::TYPE_SUPPORTING_PROCESS_MAPS,
+                Document::TYPE_MANAGEMENT_PROCESS_MAPS,
+                Document::TYPE_QUALITY_MANUAL,
+                Document::TYPE_PRODUCTION_INSTRUCTIONS,
+                Document::TYPE_GMP_MANUAL,
+            ]),
+            'price' => 'required|integer|min:0',
             'preview_pages' => 'nullable|integer|min:1|max:10',
             'file' => 'nullable|file|mimes:pdf,doc,docx,txt,rtf,jpg,jpeg,png,gif|max:10240',
             'is_active' => 'boolean',
@@ -279,8 +324,31 @@ class AdminController extends Controller
             ]);
         }
 
-        // Update category relationship
-        $document->update(['category_id' => $category->id]);
+        // Handle subcategory - find existing or create new (if provided)
+        $subcategoryId = null;
+        if ($request->has('subcategory') && !empty($request->subcategory)) {
+            $subcategoryName = $request->subcategory;
+            $subcategory = DocumentSubcategory::where('name', $subcategoryName)
+                ->where('category_id', $category->id)
+                ->first();
+            
+            if (!$subcategory) {
+                // Create new subcategory
+                $subcategory = DocumentSubcategory::create([
+                    'name' => $subcategoryName,
+                    'slug' => Str::slug($subcategoryName),
+                    'category_id' => $category->id,
+                ]);
+            }
+            $subcategoryId = $subcategory->id;
+        }
+
+        // Update category and subcategory relationships
+        $document->update([
+            'category_id' => $category->id,
+            'subcategory_id' => $subcategoryId,
+            'document_type' => $request->has('document_type') ? $request->document_type : $document->document_type,
+        ]);
         
         // Regenerate preview if preview_pages changed or file was uploaded
         if ($previewPagesChanged || $request->hasFile('file')) {
@@ -326,7 +394,7 @@ class AdminController extends Controller
 
         return response()->json([
             'message' => 'Document updated successfully',
-            'document' => $document->load(['creator', 'category']),
+            'document' => $document->load(['creator', 'category', 'subcategory']),
         ]);
     }
 
@@ -352,7 +420,7 @@ class AdminController extends Controller
 
         return response()->json([
             'message' => 'Document status updated successfully',
-            'document' => $document->load(['creator', 'category']),
+            'document' => $document->load(['creator', 'category', 'subcategory']),
         ]);
     }
 

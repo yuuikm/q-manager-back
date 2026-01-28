@@ -17,6 +17,8 @@ use App\Http\Controllers\Api\InternalDocumentController;
 use App\Http\Controllers\Api\ManagerHelpController;
 use App\Http\Controllers\Api\ManagerHelpCategoryController;
 use App\Http\Controllers\Api\SliderController;
+use App\Http\Controllers\Api\DocumentSubcategoryController;
+use App\Http\Controllers\Api\DocumentTypeController;
 
 // Public routes
 Route::post('/auth/register', [AuthController::class, 'register']);
@@ -27,6 +29,10 @@ Route::get('/documents', [AdminController::class, 'getPublicDocuments']);
 Route::get('/documents/{id}', [AdminController::class, 'getPublicDocument']);
 Route::get('/documents/{id}/preview', [AdminController::class, 'previewDocument']);
 Route::get('/categories', [AdminController::class, 'getCategories']);
+
+// Public subcategory routes
+Route::get('/subcategories', [DocumentSubcategoryController::class, 'publicIndex']);
+Route::get('/subcategories/slug/{slug}', [DocumentSubcategoryController::class, 'showBySlug']);
 
 // Public news routes
 Route::get('/news', [NewsController::class, 'index']);
@@ -109,6 +115,9 @@ Route::middleware(['token.auth', 'admin.auth'])->prefix('admin')->group(function
     // Category management for each content type
     Route::apiResource('news-categories', NewsCategoryController::class);
     Route::apiResource('document-categories', DocumentCategoryController::class);
+    Route::apiResource('document-subcategories', DocumentSubcategoryController::class);
+    Route::get('/document-subcategories/by-category/{categoryId}', [DocumentSubcategoryController::class, 'byCategory']);
+    Route::get('/document-types', [DocumentTypeController::class, 'index']);
     Route::apiResource('course-categories', CourseCategoryController::class);
     
     // User management
