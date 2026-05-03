@@ -72,7 +72,9 @@ Route::middleware(['token.auth'])->group(function () {
     // Document purchase and download (requires authentication)
     Route::post('/documents/{id}/purchase', [AdminController::class, 'purchaseDocument']);
     Route::get('/documents/{id}/download', [AdminController::class, 'downloadDocument']);
+    Route::post('/courses/{id}/progress', [CourseController::class, 'updateProgress']);
     Route::get('/user/purchased-documents', [AdminController::class, 'getUserPurchasedDocuments']);
+    Route::get('/user/enrolled-courses', [CourseController::class, 'getUserEnrolledCourses']);
     
 });
 

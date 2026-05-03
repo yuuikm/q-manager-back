@@ -23,6 +23,7 @@ class CourseEnrollment extends Model
         'started_at',
         'completed_at',
         'progress_percentage',
+        'current_step_index',
         'final_score',
     ];
 
@@ -31,6 +32,7 @@ class CourseEnrollment extends Model
         'started_at' => 'datetime',
         'completed_at' => 'datetime',
         'progress_percentage' => 'integer',
+        'current_step_index' => 'integer',
         'final_score' => 'decimal:2',
     ];
 

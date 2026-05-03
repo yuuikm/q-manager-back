@@ -383,6 +383,15 @@ class CourseController extends Controller
 
         // Get or create user
         $user = $request->user();
+        
+        // If route is public, user() might be null. Try to get it from token directly.
+        if (!$user && $request->bearerToken()) {
+            $personalAccessToken = \App\Models\PersonalAccessToken::where('token', hash('sha256', $request->bearerToken()))->first();
+            if ($personalAccessToken && (!$personalAccessToken->expires_at || !$personalAccessToken->expires_at->isPast())) {
+                $user = $personalAccessToken->tokenable;
+            }
+        }
+
         if (!$user) {
             // For non-authenticated users, we'll create a record but they need to register later
             $user = null;
@@ -402,7 +411,7 @@ class CourseController extends Controller
             'email' => $request->email,
             'company' => $request->company,
             'notes' => $request->notes,
-            'status' => 'pending',
+            'status' => 'enrolled',
             'enrolled_at' => now(),
         ];
 
@@ -424,5 +433,78 @@ class CourseController extends Controller
             'enrollment' => $enrollment,
             'course' => $course->load(['author', 'category']),
         ], 201);
+    }
+
+    /**
+     * Get the authenticated user's enrolled courses
+     */
+    public function getUserEnrolledCourses(Request $request)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Unauthorized'], 401);
+        }
+
+        $enrollments = \App\Models\CourseEnrollment::with(['course.category', 'course.author'])
+            ->where('user_id', $user->id)
+            ->orderBy('enrolled_at', 'desc')
+            ->get();
+
+        return response()->json([
+            'enrollments' => $enrollments,
+        ]);
+    }
+
+    /**
+     * Update course enrollment progress
+     */
+    public function updateProgress(Request $request, string $id)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Unauthorized'], 401);
+        }
+
+        $request->validate([
+            'current_step_index' => 'required|integer|min:0',
+            'progress_percentage' => 'nullable|integer|min:0|max:100',
+        ]);
+
+        $enrollment = \App\Models\CourseEnrollment::where('course_id', $id)
+            ->where('user_id', $user->id)
+            ->first();
+
+        if (!$enrollment) {
+            return response()->json(['message' => 'Not enrolled in this course'], 403);
+        }
+
+        $dataToUpdate = [
+            'current_step_index' => $request->current_step_index,
+        ];
+        
+        if ($request->has('progress_percentage')) {
+            $dataToUpdate['progress_percentage'] = $request->progress_percentage;
+            
+            // Mark as completed if 100%
+            if ($request->progress_percentage == 100 && $enrollment->status !== 'completed') {
+                $dataToUpdate['status'] = 'completed';
+                $dataToUpdate['completed_at'] = now();
+            }
+        }
+
+        // If this is the first progress update, mark as started
+        if (!$enrollment->started_at && $request->current_step_index > 0) {
+            $dataToUpdate['started_at'] = now();
+            if ($enrollment->status === 'enrolled') {
+                $dataToUpdate['status'] = 'in_progress';
+            }
+        }
+
+        $enrollment->update($dataToUpdate);
+
+        return response()->json([
+            'message' => 'Progress updated',
+            'enrollment' => $enrollment
+        ]);
     }
 }
