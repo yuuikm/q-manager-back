@@ -19,6 +19,8 @@ use App\Http\Controllers\Api\ManagerHelpCategoryController;
 use App\Http\Controllers\Api\SliderController;
 use App\Http\Controllers\Api\DocumentSubcategoryController;
 use App\Http\Controllers\Api\DocumentTypeController;
+use App\Http\Controllers\Api\MediaController;
+use App\Http\Controllers\Api\DashboardController;
 
 // Public routes
 Route::post('/auth/register', [AuthController::class, 'register']);
@@ -34,6 +36,9 @@ Route::get('/categories', [AdminController::class, 'getCategories']);
 Route::get('/subcategories', [DocumentSubcategoryController::class, 'publicIndex']);
 Route::get('/subcategories/slug/{slug}', [DocumentSubcategoryController::class, 'showBySlug']);
 
+// Public certificate verification
+Route::get('/certificates/{number}', [CourseController::class, 'verifyCertificate']);
+
 // Public news routes
 Route::get('/news', [NewsController::class, 'index']);
 Route::get('/news/{id}', [NewsController::class, 'show']);
@@ -43,6 +48,7 @@ Route::get('/news-categories', [NewsCategoryController::class, 'index']);
 Route::get('/courses', [CourseController::class, 'index']);
 Route::get('/courses/{id}', [CourseController::class, 'show']);
 Route::get('/courses/{id}/materials', [CourseController::class, 'materials']);
+Route::get('/courses/{id}/tests', [CourseController::class, 'tests']);
 Route::post('/courses/{id}/enroll', [CourseController::class, 'enroll']);
 Route::get('/course-categories', [CourseCategoryController::class, 'index']);
 
@@ -75,6 +81,9 @@ Route::middleware(['token.auth'])->group(function () {
     Route::post('/courses/{id}/progress', [CourseController::class, 'updateProgress']);
     Route::get('/user/purchased-documents', [AdminController::class, 'getUserPurchasedDocuments']);
     Route::get('/user/enrolled-courses', [CourseController::class, 'getUserEnrolledCourses']);
+    Route::get('/tests/{id}/questions', [CourseController::class, 'getTestQuestions']);
+    Route::post('/tests/{id}/submit', [CourseController::class, 'submitTest']);
+    Route::get('/user/certificates', [CourseController::class, 'getUserCertificates']);
     
 });
 
@@ -143,6 +152,14 @@ Route::middleware(['token.auth', 'admin.auth'])->prefix('admin')->group(function
     Route::get('/sliders', [SliderController::class, 'adminIndex']);
     Route::apiResource('sliders', SliderController::class)->except(['index']);
     Route::patch('/sliders/{id}/toggle-status', [SliderController::class, 'toggleStatus']);
+
+    // Dashboard statistics
+    Route::get('/dashboard/stats', [DashboardController::class, 'stats']);
+
+    // Media files management
+    Route::get('/media', [MediaController::class, 'index']);
+    Route::delete('/media', [MediaController::class, 'destroy']);
+    Route::delete('/media/bulk', [MediaController::class, 'bulkDestroy']);
 });
 
 // Test route

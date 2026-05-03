@@ -7,6 +7,7 @@ use App\Models\Course;
 use App\Models\CourseMaterial;
 use App\Models\Test;
 use App\Models\CourseCategory;
+use App\Models\Certificate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Storage;
@@ -505,6 +506,195 @@ class CourseController extends Controller
         return response()->json([
             'message' => 'Progress updated',
             'enrollment' => $enrollment
+        ]);
+    }
+
+    /**
+     * Get questions for a test
+     */
+    public function getTestQuestions(Request $request, string $id)
+    {
+        $test = Test::findOrFail($id);
+
+        $allQuestions = \DB::table('test_questions')
+            ->where('test_id', $id)
+            ->get()
+            ->map(function ($q) {
+                return [
+                    'id'      => $q->id,
+                    'question'=> $q->question,
+                    'type'    => $q->type,
+                    'options' => json_decode($q->options, true),
+                    'points'  => $q->points,
+                ];
+            })
+            ->shuffle(); // randomize
+
+        // If total_questions is set and less than all questions, take that many
+        if ($test->total_questions && $test->total_questions < $allQuestions->count()) {
+            $questions = $allQuestions->take($test->total_questions)->values();
+        } else {
+            $questions = $allQuestions->values();
+        }
+
+        return response()->json([
+            'test'      => $test,
+            'questions' => $questions,
+        ]);
+    }
+
+    /**
+     * Submit test answers and calculate score
+     */
+    public function submitTest(Request $request, string $id)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Unauthorized'], 401);
+        }
+
+        $test = Test::findOrFail($id);
+
+        $request->validate([
+            'answers' => 'required|array',
+        ]);
+
+        $answers = $request->answers; // ['question_id' => 'selected_answer']
+
+        // Get questions that the user actually answered
+        $questionIds = array_keys($answers);
+        $questions = \DB::table('test_questions')
+            ->whereIn('id', $questionIds)
+            ->where('test_id', $id)
+            ->get();
+
+        // Calculate expected total points for the subset served to the student
+        $poolStats = \DB::table('test_questions')
+            ->where('test_id', $id)
+            ->selectRaw('count(*) as count, sum(points) as total_points')
+            ->first();
+            
+        $avgPoints = ($poolStats && $poolStats->count > 0) ? $poolStats->total_points / $poolStats->count : 5;
+        $questionsToShow = $test->total_questions ?: ($poolStats ? $poolStats->count : 0);
+        $totalPoints = $avgPoints * $questionsToShow;
+
+        $earnedPoints = 0;
+        $resultDetails = [];
+
+        foreach ($questions as $q) {
+            $userAnswer = $answers[$q->id] ?? null;
+            $isCorrect = $userAnswer === $q->correct_answer;
+            if ($isCorrect) {
+                $earnedPoints += $q->points;
+            }
+            $resultDetails[] = [
+                'question_id' => $q->id,
+                'question' => $q->question,
+                'user_answer' => $userAnswer,
+                'correct_answer' => $q->correct_answer,
+                'is_correct' => $isCorrect,
+                'points' => $q->points,
+                'explanation' => $q->explanation ?? null,
+            ];
+        }
+
+        $scorePercentage = $totalPoints > 0 ? round(($earnedPoints / $totalPoints) * 100) : 0;
+        $passed = $scorePercentage >= $test->passing_score;
+
+        // If passed, find enrollment and issue certificate if not already given
+        $certificate = null;
+        if ($passed) {
+            $enrollment = \App\Models\CourseEnrollment::where('course_id', $test->course_id)
+                ->where('user_id', $user->id)
+                ->first();
+
+            if ($enrollment) {
+                // Update enrollment status
+                $enrollment->update([
+                    'status' => 'completed',
+                    'completed_at' => now(),
+                    'final_score' => $scorePercentage,
+                    'progress_percentage' => 100,
+                ]);
+
+                // Check if certificate already exists
+                $existing = Certificate::where('enrollment_id', $enrollment->id)->first();
+                if (!$existing) {
+                    $certNumber = 'CERT-' . strtoupper(Str::random(8)) . '-' . date('Y');
+                    $certificate = Certificate::create([
+                        'certificate_number' => $certNumber,
+                        'course_id' => $test->course_id,
+                        'user_id' => $user->id,
+                        'enrollment_id' => $enrollment->id,
+                        'pdf_path' => '',
+                        'final_score' => $scorePercentage,
+                        'issued_at' => now(),
+                        'is_valid' => true,
+                    ]);
+                } else {
+                    $certificate = $existing;
+                }
+            }
+        }
+
+        return response()->json([
+            'passed' => $passed,
+            'score_percentage' => $scorePercentage,
+            'earned_points' => $earnedPoints,
+            'total_points' => $totalPoints,
+            'passing_score' => $test->passing_score,
+            'details' => $resultDetails,
+            'certificate' => $certificate,
+        ]);
+    }
+
+    /**
+     * Get user certificates
+     */
+    public function getUserCertificates(Request $request)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Unauthorized'], 401);
+        }
+
+        $certificates = Certificate::where('user_id', $user->id)
+            ->with(['course', 'user'])
+            ->orderBy('issued_at', 'desc')
+            ->get();
+
+        return response()->json(['certificates' => $certificates]);
+    }
+
+    /**
+     * Public certificate verification by certificate number
+     */
+    public function verifyCertificate(string $number)
+    {
+        $certificate = Certificate::where('certificate_number', $number)
+            ->with(['course', 'user'])
+            ->first();
+
+        if (!$certificate) {
+            return response()->json(['message' => 'Сертификат не найден'], 404);
+        }
+
+        return response()->json([
+            'certificate' => [
+                'certificate_number' => $certificate->certificate_number,
+                'final_score' => $certificate->final_score,
+                'issued_at' => $certificate->issued_at,
+                'is_valid' => $certificate->is_valid,
+                'course' => [
+                    'id' => $certificate->course->id,
+                    'title' => $certificate->course->title,
+                ],
+                'user' => [
+                    'first_name' => $certificate->user->first_name,
+                    'last_name' => $certificate->user->last_name,
+                    'username' => $certificate->user->username,
+                ],
+            ],
         ]);
     }
 }
