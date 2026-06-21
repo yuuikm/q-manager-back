@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\DocumentSubcategoryController;
 use App\Http\Controllers\Api\DocumentTypeController;
 use App\Http\Controllers\Api\MediaController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\ApplicationController;
 
 // Public routes
 Route::post('/auth/register', [AuthController::class, 'register']);
@@ -84,6 +85,7 @@ Route::middleware(['token.auth'])->group(function () {
     Route::get('/tests/{id}/questions', [CourseController::class, 'getTestQuestions']);
     Route::post('/tests/{id}/submit', [CourseController::class, 'submitTest']);
     Route::get('/user/certificates', [CourseController::class, 'getUserCertificates']);
+    Route::get('/user/applications', [ApplicationController::class, 'userApplications']);
     
 });
 
@@ -160,6 +162,10 @@ Route::middleware(['token.auth', 'admin.auth'])->prefix('admin')->group(function
     Route::get('/media', [MediaController::class, 'index']);
     Route::delete('/media', [MediaController::class, 'destroy']);
     Route::delete('/media/bulk', [MediaController::class, 'bulkDestroy']);
+
+    // Applications management
+    Route::get('/applications', [ApplicationController::class, 'index']);
+    Route::patch('/applications/{type}/{id}/status', [ApplicationController::class, 'updateStatus']);
 });
 
 // Test route

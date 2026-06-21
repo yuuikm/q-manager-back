@@ -412,7 +412,8 @@ class CourseController extends Controller
             'email' => $request->email,
             'company' => $request->company,
             'notes' => $request->notes,
-            'status' => 'enrolled',
+            'status' => 'created',
+            'payment_status' => 'created',
             'enrolled_at' => now(),
         ];
 

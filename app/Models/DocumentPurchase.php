@@ -17,6 +17,7 @@ class DocumentPurchase extends Model
         'notes',
         'price_paid',
         'status',
+        'payment_status',
         'purchased_at',
     ];
 
@@ -37,7 +38,7 @@ class DocumentPurchase extends Model
 
     public function scopeCompleted($query)
     {
-        return $query->where('status', 'completed');
+        return $query->where('payment_status', 'paid');
     }
 
     public function scopeByUser($query, $userId)

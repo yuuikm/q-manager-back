@@ -530,9 +530,15 @@ class AdminController extends Controller
             return response()->json(['message' => 'Authentication required'], 401);
         }
 
-        // Check if document is free or user has purchased it
-        if ($document->price > 0 && !$document->isPurchasedBy($user->id)) {
-            return response()->json(['message' => 'Document must be purchased before download'], 403);
+        // Check if document is free or user has purchased it (and paid)
+        if ($document->price > 0) {
+            $purchase = \App\Models\DocumentPurchase::where('document_id', $document->id)
+                ->where('user_id', $user->id)
+                ->where('payment_status', 'paid')
+                ->first();
+            if (!$purchase) {
+                return response()->json(['message' => 'Документ должен быть оплачен перед скачиванием'], 403);
+            }
         }
 
         $filePath = storage_path('app/public/' . $document->file_path);
@@ -579,7 +585,8 @@ class AdminController extends Controller
             'company' => $request->company,
             'notes' => $request->notes,
             'price_paid' => $document->price,
-            'status' => 'completed',
+            'status' => 'pending',
+            'payment_status' => 'created',
             'purchased_at' => now(),
         ];
 
@@ -615,8 +622,7 @@ class AdminController extends Controller
 
         $purchases = \App\Models\DocumentPurchase::with(['document.category'])
             ->where('user_id', $user->id)
-            ->where('status', 'completed')
-            ->orderBy('purchased_at', 'desc')
+            ->orderBy('created_at', 'desc')
             ->get();
 
         return response()->json([
