@@ -593,12 +593,16 @@ class AdminController extends Controller
         if ($user) {
             $purchaseData['user_id'] = $user->id;
             
-            // Update user profile with provided data
-            $user->update([
-                'first_name' => $request->first_name,
-                'last_name' => $request->last_name,
-                'phone' => $request->phone,
-            ]);
+            // Update user profile with provided data safely
+            try {
+                $user->update([
+                    'first_name' => $request->first_name,
+                    'last_name' => $request->last_name,
+                    'phone' => $request->phone,
+                ]);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Failed to update user profile on document purchase: ' . $e->getMessage());
+            }
         }
 
         $purchase = \App\Models\DocumentPurchase::create($purchaseData);

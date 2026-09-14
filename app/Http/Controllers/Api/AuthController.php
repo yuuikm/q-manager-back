@@ -19,7 +19,7 @@ class AuthController extends Controller
             'password' => 'required|string|min:8|confirmed',
             'first_name' => 'nullable|string|max:255',
             'last_name' => 'nullable|string|max:255',
-            'phone' => 'nullable|string|max:20|unique:users',
+            'phone' => 'nullable|string|max:20',
         ]);
 
         if ($validator->fails()) {
@@ -92,7 +92,7 @@ class AuthController extends Controller
         $validator = Validator::make($request->all(), [
             'first_name' => 'nullable|string|max:255',
             'last_name' => 'nullable|string|max:255',
-            'phone' => 'nullable|string|max:20|unique:users,phone,' . $user->id,
+            'phone' => 'nullable|string|max:20',
             'email' => 'nullable|string|email|max:255|unique:users,email,' . $user->id,
         ]);
 

@@ -420,20 +420,22 @@ class CourseController extends Controller
         if ($user) {
             $enrollmentData['user_id'] = $user->id;
             
-            // Update user profile with provided data
-            $user->update([
-                'first_name' => $request->first_name,
-                'last_name' => $request->last_name,
-                'phone' => $request->phone,
-            ]);
+            // Update user profile with provided data safely
+            try {
+                $user->update([
+                    'first_name' => $request->first_name,
+                    'last_name' => $request->last_name,
+                    'phone' => $request->phone,
+                ]);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Failed to update user profile on enrollment: ' . $e->getMessage());
+            }
         }
 
         $enrollment = $course->enrollments()->create($enrollmentData);
 
         return response()->json([
-            'message' => 'Successfully enrolled in course',
-            'enrollment' => $enrollment,
-            'course' => $course->load(['author', 'category']),
+            'message' => 'Successfully enrolled in course'
         ], 201);
     }
 
