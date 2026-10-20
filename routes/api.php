@@ -22,10 +22,15 @@ use App\Http\Controllers\Api\DocumentTypeController;
 use App\Http\Controllers\Api\MediaController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\ApplicationController;
+use App\Http\Controllers\Api\FaqController;
 
 // Public routes
 Route::post('/auth/register', [AuthController::class, 'register']);
 Route::post('/auth/login', [AuthController::class, 'login']);
+
+// Public FAQ routes
+Route::get('/faqs', [FaqController::class, 'index']);
+Route::get('/faqs/{id}', [FaqController::class, 'show']);
 
 // Public document routes
 Route::get('/documents', [AdminController::class, 'getPublicDocuments']);
@@ -166,6 +171,15 @@ Route::middleware(['token.auth', 'admin.auth'])->prefix('admin')->group(function
     // Applications management
     Route::get('/applications', [ApplicationController::class, 'index']);
     Route::patch('/applications/{type}/{id}/status', [ApplicationController::class, 'updateStatus']);
+
+    // FAQ management
+    Route::get('/faqs/tree', [FaqController::class, 'adminTree']);
+    Route::get('/faqs', [FaqController::class, 'adminIndex']);
+    Route::get('/faqs/{id}', [FaqController::class, 'adminShow']);
+    Route::post('/faqs', [FaqController::class, 'store']);
+    Route::put('/faqs/{id}', [FaqController::class, 'update']);
+    Route::delete('/faqs/{id}', [FaqController::class, 'destroy']);
+    Route::patch('/faqs/{id}/toggle-status', [FaqController::class, 'toggleStatus']);
 });
 
 // Test route
