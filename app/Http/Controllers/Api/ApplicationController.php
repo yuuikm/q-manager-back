@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\DocumentPurchase;
 use App\Models\CourseEnrollment;
+use App\Models\Lead;
 use Illuminate\Http\Request;
 
 class ApplicationController extends Controller
@@ -112,6 +113,45 @@ class ApplicationController extends Controller
             }
         }
 
+        // Get leads / chat questions
+        if (!$typeFilter || $typeFilter === 'lead') {
+            $leadQuery = Lead::query();
+
+            if ($statusFilter) {
+                $leadQuery->where('status', $statusFilter);
+            }
+
+            if ($search) {
+                $leadQuery->where(function ($q) use ($search) {
+                    $q->where('phone', 'like', "%{$search}%")
+                      ->orWhere('email', 'like', "%{$search}%")
+                      ->orWhere('name', 'like', "%{$search}%")
+                      ->orWhere('question', 'like', "%{$search}%");
+                });
+            }
+
+            $leads = $leadQuery->orderBy('created_at', 'desc')->get();
+
+            foreach ($leads as $lead) {
+                $applications[] = [
+                    'id' => $lead->id,
+                    'type' => 'lead',
+                    'item_title' => 'Вопрос из чата / Лид: ' . \Illuminate\Support\Str::limit($lead->question, 45),
+                    'item_id' => $lead->id,
+                    'first_name' => $lead->name ?: 'Посетитель чата',
+                    'last_name' => '',
+                    'phone' => $lead->phone,
+                    'email' => $lead->email ?: '',
+                    'company' => null,
+                    'notes' => $lead->question,
+                    'price' => 0,
+                    'payment_status' => $lead->status, // new, in_progress, contacted, closed
+                    'created_at' => $lead->created_at,
+                    'user' => null,
+                ];
+            }
+        }
+
         // Sort all by created_at desc
         usort($applications, function ($a, $b) {
             return strtotime($b['created_at']) - strtotime($a['created_at']);
@@ -128,6 +168,17 @@ class ApplicationController extends Controller
      */
     public function updateStatus(Request $request, string $type, int $id)
     {
+        if ($type === 'lead') {
+            $lead = Lead::findOrFail($id);
+            $newStatus = $request->payment_status ?? $request->status ?? 'contacted';
+            $lead->update(['status' => $newStatus]);
+
+            return response()->json([
+                'message' => 'Статус лида обновлён',
+                'application' => $lead,
+            ]);
+        }
+
         $request->validate([
             'payment_status' => 'required|in:created,contract,paid',
         ]);

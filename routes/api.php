@@ -23,10 +23,14 @@ use App\Http\Controllers\Api\MediaController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\ApplicationController;
 use App\Http\Controllers\Api\FaqController;
+use App\Http\Controllers\Api\LeadController;
 
 // Public routes
 Route::post('/auth/register', [AuthController::class, 'register']);
 Route::post('/auth/login', [AuthController::class, 'login']);
+
+// Public Lead / Chat Question route
+Route::post('/leads', [LeadController::class, 'store']);
 
 // Public FAQ routes
 Route::get('/faqs', [FaqController::class, 'index']);
@@ -171,6 +175,13 @@ Route::middleware(['token.auth', 'admin.auth'])->prefix('admin')->group(function
     // Applications management
     Route::get('/applications', [ApplicationController::class, 'index']);
     Route::patch('/applications/{type}/{id}/status', [ApplicationController::class, 'updateStatus']);
+
+    // Leads management
+    Route::get('/leads', [LeadController::class, 'index']);
+    Route::get('/leads/{id}', [LeadController::class, 'show']);
+    Route::patch('/leads/{id}/status', [LeadController::class, 'updateStatus']);
+    Route::post('/leads/{id}/convert-faq', [LeadController::class, 'convertFaq']);
+    Route::delete('/leads/{id}', [LeadController::class, 'destroy']);
 
     // FAQ management
     Route::get('/faqs/tree', [FaqController::class, 'adminTree']);
